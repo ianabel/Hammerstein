@@ -30,6 +30,13 @@ double GradShafranovGreensFunction1D(double R, double R_star, double delta )
 		double k_squared = 4 * R * R_star / ( ( R + R_star )*( R + R_star ) );
 		double k = ::sqrt( k_squared );
 
+		if ( ::fabs( R - R_star ) < 1e-4 )
+		{
+			delta = R - R_star;
+			k_squared = ( 1 + delta/R_star )/( ( 1 + 0.5*delta/R_star )*( 1 + 0.5*delta/R_star ) );
+			k = ::sqrt( k_squared );
+		}
+
 		answer *= ( R + R_star ) * ( ( 1.0 - 0.5*k_squared )*boost::math::ellint_1( k ) - boost::math::ellint_2( k ) );
 
 		return answer;

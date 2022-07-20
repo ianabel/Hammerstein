@@ -36,10 +36,17 @@
 class HammersteinEquation {
 	public:
 		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double )> k )
-			: a( A ), b( B ), f( F ), g( G ), K( k ), basis( nullptr ), zData( nullptr, 0 )
+			: a( A ), b( B ), f( F ), g( G ), K( k ),K_singular( nullptr ), basis( nullptr ), zData( nullptr, 0 )
 		{
 
 		};
+
+		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double, double )> k )
+			: a( A ), b( B ), f( F ), g( G ), K( nullptr ),K_singular( k ), basis( nullptr ), zData( nullptr, 0 )
+		{
+
+		};
+
 
 		constexpr static const double tanhsinh_tol = 1e-15;
 
@@ -51,6 +58,7 @@ class HammersteinEquation {
 		double a,b;
 		std::function<double( double )> f;
 		std::function<double( double, double )> g,K,gPrime;
+		std::function<double( double, double, double )> K_singular;
 
 		Eigen::MatrixXd Mass;
 		Eigen::MatrixXd K_ij;
@@ -115,15 +123,28 @@ class HammersteinEquation {
 					// With a discontinuous basis, the integral is only over one of the intervals.
 					Eigen::Index Int = j / N_Gauss;
 
-					auto K_integrand = [ & ]( double s ) {
-						return K( basis->CollocationPoints[ i ], s )*basis->EvaluateBasis( j, s );
-					};
-					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
-					if ( Mesh[ Int ].x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < Mesh[ Int ].x_u ) {
-						K_ij( i, j ) = integrator.integrate( K_integrand, Mesh[ Int ].x_l, basis->CollocationPoints[ i ] ) +
-						                integrator.integrate( K_integrand, basis->CollocationPoints[ i ], Mesh[ Int ].x_u ) ;
+					if ( !K_singular ) {
+						auto K_integrand = [ & ]( double s ) {
+							return K( basis->CollocationPoints[ i ], s )*basis->EvaluateBasis( j, s );
+						};
+						boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+						if ( Mesh[ Int ].x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < Mesh[ Int ].x_u ) {
+							K_ij( i, j ) = integrator.integrate( K_integrand, Mesh[ Int ].x_l, basis->CollocationPoints[ i ] ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], Mesh[ Int ].x_u ) ;
+						} else {
+							K_ij( i, j ) = integrator.integrate( K_integrand, Mesh[ Int ].x_l, Mesh[ Int ].x_u );
+						}
 					} else {
-						K_ij( i, j ) = integrator.integrate( K_integrand, Mesh[ Int ].x_l, Mesh[ Int ].x_u );
+						auto K_integrand = [ & ]( double s, double sc ) {
+							return K_singular( basis->CollocationPoints[ i ], s, -sc )*basis->EvaluateBasis( j, s );
+						};
+						boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+						if ( Mesh[ Int ].x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < Mesh[ Int ].x_u ) {
+							K_ij( i, j ) = integrator.integrate( K_integrand, Mesh[ Int ].x_l, basis->CollocationPoints[ i ] ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], Mesh[ Int ].x_u ) ;
+						} else {
+							K_ij( i, j ) = integrator.integrate( K_integrand, Mesh[ Int ].x_l, Mesh[ Int ].x_u );
+						}
 					}
 				}
 			MassSolver.compute( Mass );
@@ -155,7 +176,8 @@ class HammersteinEquation {
 			Ka = K_ij * zData;
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i < N; i++ )
-				output( i ) = g( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ) ) - Ma( i );
+				Fa( i ) = g( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ) ) - Ma( i );
+			output = MassSolver.solve( Fa );
 			return KIN_SUCCESS;
 		}
 
@@ -266,25 +288,48 @@ class HammersteinEquation {
 				for ( Eigen::Index k=0; k < N_Gauss; k++ )
 					KIntegral += K( x, basis->CollocationPoints[ Int * N_Gauss + k ] ) * basis->EvaluateBasis( j, basis->CollocationPoints[ Int * N_Gauss + k ] ) * basis->gauss.weights[ k ] * Mesh[ Int ].h()/2.0;
 				*/
-				auto K_integrand = [ & ]( double s ) {
+				if ( !K_singular ) {
+					auto K_integrand = [ & ]( double s ) {
 						return K( x, s )*basis->EvaluateBasis( j, s );
-				};
+					};
 
-				boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
-				if ( Mesh[ Int ].x_l <= x && x < Mesh[ Int ].x_u ) {
-					double I_l,I_u;
-					// If we're sampling very close to a meshpoint we can get an error
-					if ( ( x - Mesh[ Int ].x_l ) < tanhsinh_tol )
-						I_l = 0;
-					else
-						I_l = integrator.integrate( K_integrand, Mesh[ Int ].x_l, x );
-					if ( ( Mesh[ Int ].x_u - x ) < tanhsinh_tol )
-						I_u = 0;
-					else
-						I_u = integrator.integrate( K_integrand, x, Mesh[ Int ].x_u ) ;
-					KIntegral = I_l + I_u;
+					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+					if ( Mesh[ Int ].x_l <= x && x < Mesh[ Int ].x_u ) {
+						double I_l,I_u;
+						// If we're sampling very close to a meshpoint we can get an error
+						if ( ( x - Mesh[ Int ].x_l ) < tanhsinh_tol )
+							I_l = 0;
+						else
+							I_l = integrator.integrate( K_integrand, Mesh[ Int ].x_l, x );
+						if ( ( Mesh[ Int ].x_u - x ) < tanhsinh_tol )
+							I_u = 0;
+						else
+							I_u = integrator.integrate( K_integrand, x, Mesh[ Int ].x_u ) ;
+						KIntegral = I_l + I_u;
+					} else {
+						KIntegral = integrator.integrate( K_integrand, Mesh[ Int ].x_l, Mesh[ Int ].x_u );
+					}
 				} else {
-					KIntegral = integrator.integrate( K_integrand, Mesh[ Int ].x_l, Mesh[ Int ].x_u );
+					auto K_integrand = [ & ]( double s, double sc ) {
+						return K_singular( x, s, -sc )*basis->EvaluateBasis( j, s );
+					};
+
+					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+					if ( Mesh[ Int ].x_l <= x && x < Mesh[ Int ].x_u ) {
+						double I_l,I_u;
+						// If we're sampling very close to a meshpoint we can get an error
+						if ( ( x - Mesh[ Int ].x_l ) < tanhsinh_tol )
+							I_l = 0;
+						else
+							I_l = integrator.integrate( K_integrand, Mesh[ Int ].x_l, x );
+						if ( ( Mesh[ Int ].x_u - x ) < tanhsinh_tol )
+							I_u = 0;
+						else
+							I_u = integrator.integrate( K_integrand, x, Mesh[ Int ].x_u ) ;
+						KIntegral = I_l + I_u;
+					} else {
+						KIntegral = integrator.integrate( K_integrand, Mesh[ Int ].x_l, Mesh[ Int ].x_u );
+					}
 				}
 				y_val += zData[ j ]*KIntegral;
 			}

@@ -11,8 +11,6 @@
 #include <boost/math/quadrature/tanh_sinh.hpp>
 
 #include "HammersteinEquation.hpp"
-#include "GeneralizedHammersteinEq.hpp"
-#include "SingularHammersteinEq.hpp"
 
 void KinsolErrorWrapper( int errorFlag, std::string&& fName )
 {
@@ -39,35 +37,44 @@ void KinsolErrorWrapper( int errorFlag, std::string&& fName )
 /*
  * Set up the test problem
  *
- * y = f( t ) + PVInt[ y(s)/( 2*pi*t( t-s ) ),{s,-1,1} ]
+ * y = f( t ) + Int[ s*log|s^2-t^2|*y^2,{s,0,1} ]
  *
- * with f( t ) such that y( s ) = |s| is the exact answer
- * 
- * Namely f( x ) = |x| - ( 1/2pi )*log( ( 1-x^2 )/x^2 )
+ * with f( t ) such that y( s ) = s^3/2 is the exact answer
  *
- * This has a *zero* K_weak ( aka K )
- * and K_residue( t,s ) = 1/( 2*pi*t )
+ *
  */
 
 
 double g_test( double s, double y ) {
-	return y;
+	return y*y*s;
 }
 
-double K_test( double x, double s ) {
-	return 0;
+double K_test( double x, double s, double sc ) {
+	if ( ::fabs( x - s ) > 1e-4 )
+		return ::log( ::fabs( s*s - x*x ) );
+	else
+		return ::log( ::fabs( ( s + x )*sc ) );
 }
 
-double K_res( double x, double s ) {
-	return ( 1.0 / ( 2.0*M_PI * x ) );
-}
 
 double y_star( double t ) {
-	return ::fabs( t );
+	return ::pow( t, 0.75 );
 }
 
 double f_test( double t ) {
-	return y_star( t ) - ( 1/( 2.0*M_PI ) )*::log( ( 1 - t*t )/( t*t ) );
+	
+	boost::math::quadrature::tanh_sinh<double> integrator( 5, 1e-14 );
+
+	auto integrand = [ & ]( double s, double sc ){
+		return K_test( t, s, sc )*g_test( s, y_star( s ) );
+	};
+	if ( t == 0 )
+		return y_star( t ) - integrator.integrate( integrand, t, 1 );
+	else if ( t == 1 )
+		return y_star( t ) - integrator.integrate( integrand, 0, t );
+	else
+		return y_star( t ) - integrator.integrate( integrand, 0, t ) - integrator.integrate( integrand, t, 1 );
+
 };
 
 
@@ -77,7 +84,7 @@ int main( int argc, char** argv )
 	unsigned int N_Intervals = 16;
 	unsigned int PolynomialOrder = 2;
 
-	SingularHammersteinEquation TestProblem( -1, 1, f_test, g_test, K_test, K_res );
+	HammersteinEquation TestProblem( 0, 1, f_test, g_test, K_test );
 
 	sundials::Context sunctx;
 
@@ -97,7 +104,7 @@ int main( int argc, char** argv )
 
 	TestProblem.computeCoefficients( NV_DATA_S( zDataInit ), initial_y );
 
-	KinsolErrorWrapper( KINInit( kinMem, SingularHammersteinEquation::KINSOL_Hammerstein, zDataInit ), "KINInit" );
+	KinsolErrorWrapper( KINInit( kinMem, HammersteinEquation::KINSOL_Hammerstein, zDataInit ), "KINInit" );
 	KinsolErrorWrapper( KINSetPrintLevel( kinMem, 0 ), "KINSetPrintLevel" );
 	KinsolErrorWrapper( KINSetUserData( kinMem, static_cast<void*>( &TestProblem ) ), "KINSetUserData" );
 
@@ -130,14 +137,14 @@ int main( int argc, char** argv )
 	TestProblem.setzData( zDataInit );
 
 	std::cout << "Test problem 1 (Numerical J): "<< std::endl 
-				 << "                    / 1   y(s)       " << std::endl
-				 << " y(t) = f(t) + P.V. |   -------------  ds " << std::endl
-				 << "                    /-1  2*pi*t*(s-t) " << std::endl
+				 << "                / 1         " << std::endl
+				 << " y(t) = f(t) +  |   log|s^2-t^2|*y^2  ds " << std::endl
+				 << "               /-1   " << std::endl
 				 << std::endl
-				 << " z(t) = (y(t))^3 and f such that the answer is y = t^6 " << std::endl << std::endl;
+				 << " z(t) = (y(t))^2 and f such that the answer is y = t^3/4 " << std::endl << std::endl;
 	std::cout << "Checking z " << std::endl;
 
-	unsigned int N_Samples = 13;
+	unsigned int N_Samples = 128;
 	Eigen::VectorXd samples( N_Samples + 1 ),exactZ( N_Samples + 1 ),exactY( N_Samples + 1 ),interpolated( N_Samples + 1 );
 
 	auto exact_z = [ & ]( double t ){
@@ -146,31 +153,28 @@ int main( int argc, char** argv )
 
 	for ( Eigen::Index i=0; i<=N_Samples; ++i )
 	{
-		double x = -1 + 2.0*i/static_cast<double>( N_Samples );
+		double x = i/static_cast<double>( N_Samples );
 		samples( i ) = TestProblem.EvaluateZ( x );
 		exactZ( i ) = exact_z( x );
 		interpolated( i ) = TestProblem.EvaluateY( x );
 		exactY( i ) = y_star( x );
 	}
 
-	std::cout << "Answer at t = 0.9 should be " << exact_z( 0.9 ) << " and is numerically " << TestProblem.EvaluateZ( 0.9 ) << std::endl;
-	std::cout << "Answer at t = 0.45 should be " << exact_z( 0.45 ) << " and is numerically " << TestProblem.EvaluateZ( 0.45 ) << std::endl;
-	std::cout << "Answer at t = -0.45 should be " << exact_z( -0.45 ) << " and is numerically " << TestProblem.EvaluateZ( -0.45 ) << std::endl;
-	std::cout << "Answer at t = -0.9 should be " << exact_z( -0.9 ) << " and is numerically " << TestProblem.EvaluateZ( -0.9 ) << std::endl;
+	std::vector<double> points = {0.0,0.25,0.5,0.75,1.0};
+	for ( auto x : points )
+		std::cout << "Answer at t = "<< x <<" should be " << exact_z( x ) << " and is numerically " << TestProblem.EvaluateZ( x ) << std::endl;
 
 	std::cout << std::endl;
 
-	 Eigen::VectorXd err = exactZ - samples;
+	Eigen::VectorXd err = exactZ - samples;
 	std::cout << "\tL_1 error = " << err.lpNorm<1>() << std::endl;
 	std::cout << "\tL_2 error = " << err.lpNorm<2>() << std::endl;
 	std::cout << "\tL_Inf error = " << err.lpNorm<Eigen::Infinity>() << std::endl;
 
 	std::cout << "Checking y " << std::endl;
 
-	std::cout << "Answer at t = 0.9 should be " << y_star( 0.9 ) << " and is numerically " << TestProblem.EvaluateY( 0.9 ) << std::endl;
-	std::cout << "Answer at t = 0.45 should be " << y_star( 0.45 ) << " and is numerically " << TestProblem.EvaluateY( 0.45 ) << std::endl;
-	std::cout << "Answer at t = -0.45 should be " << y_star( -0.45 ) << " and is numerically " << TestProblem.EvaluateY( -0.45 ) << std::endl;
-	std::cout << "Answer at t = -0.9 should be " << y_star( -0.9 ) << " and is numerically " << TestProblem.EvaluateY( -0.9 ) << std::endl;
+	for ( auto x : points )
+		std::cout << "Answer at t = "<< x <<" should be " << y_star( x ) << " and is numerically " << TestProblem.EvaluateY( x ) << std::endl;
 	std::cout << std::endl;
 
 	err = exactY - interpolated;
@@ -178,7 +182,6 @@ int main( int argc, char** argv )
 	std::cout << "\tL_2 error = " << err.lpNorm<2>() << std::endl;
 	std::cout << "\tL_Inf error = " << err.lpNorm<Eigen::Infinity>() << std::endl;
 
-	std::cout << f_test( 0.2 ) << std::endl;
 	return 0;
 }
 
