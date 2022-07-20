@@ -8,8 +8,8 @@ SUN_LINK_FLAGS = -lsundials_kinsol -lsundials_nvecserial -lsundials_sunlinsolden
 #EIGENFLAGS=-I/usr/include/mkl
 # EIG_LINK_FLAGS=-Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
 CXX=g++
-#CXXFLAGS=-std=c++20 -g -O0 $(SUNFLAGS) $(EIGENFLAGS)
-CXXFLAGS=-std=c++20 -O2 -march=native -fopenmp $(SUNFLAGS) $(EIGENFLAGS)
+CXXFLAGS=-std=c++20 -g -O0 $(SUNFLAGS) $(EIGENFLAGS)
+#CXXFLAGS=-std=c++20 -O2 -march=native -fopenmp $(SUNFLAGS) $(EIGENFLAGS)
 
 LINK_FLAGS= $(SUN_LINK_FLAGS) 
 all: HammersteinSolver
