@@ -17,6 +17,10 @@ all: PsiSolver
 HammersteinSolver: HammersteinSolver.cpp HammersteinEquation.hpp CollocationApprox.hpp GaussNodes.hpp GeneralizedHammersteinEq.hpp
 	$(CXX) -o HammersteinSolver $(CXXFLAGS) HammersteinSolver.cpp $(LINK_FLAGS)
 
+HammersteinTests: HammersteinTests.cpp HammersteinEquation.hpp CollocationApprox.hpp GaussNodes.hpp GeneralizedHammersteinEq.hpp
+	$(CXX) -o HammersteinTests $(CXXFLAGS) HammersteinTests.cpp $(LINK_FLAGS)
+
+
 PsiSolver: PsiSolver.cpp HammersteinEquation.hpp CollocationApprox.hpp GaussNodes.hpp GreensFunction.hpp GreensFunction.cpp
 	$(CXX) -o PsiSolver $(CXXFLAGS) PsiSolver.cpp GreensFunction.cpp $(LINK_FLAGS)
 

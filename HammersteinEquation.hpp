@@ -219,7 +219,7 @@ class HammersteinEquation {
 			for ( Eigen::Index i=0; i < N; i++ )
 				tV2( i ) = gPrime( basis->CollocationPoints[ i ], tV1( i ) );
 
-			JMatrix = ( tV2.asDiagonal() * K_ij ) - Mass;
+			JMatrix = MassSolver.solve( tV2.asDiagonal() * K_ij ) - Eigen::MatrixXd::Identity( N, N );
 			return KIN_SUCCESS;
 		}
 

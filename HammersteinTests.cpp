@@ -199,7 +199,7 @@ double f_prime_gtest( double t ) {
 int main( int argc, char** argv )
 {
 
-	unsigned int N_Intervals = 32;
+	unsigned int N_Intervals = 16;
 	unsigned int PolynomialOrder = 2;
 
 	HammersteinEquation Problem1( -1, 1, f_test1, g_test1, K_test1 );

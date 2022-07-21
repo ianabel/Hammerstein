@@ -72,10 +72,55 @@ class CollocationBasis
 			return eval;
 		};
 
+		double EvaluateLagrangeGaussBasis( Eigen::Index i, double x ) const
+		{
+			Eigen::Index m = i/( k+1 );
+			Interval const &I = Mesh[ m ];
+			if ( I.contains( x ) ) {
+				// form lagrange polynomial j = i%(k+1) using the collocation points in the interval I
+				double result = 1.0;
+				Eigen::Index j = i %( k+1 );
+				for ( Eigen::Index l=0; l < k+1; l++ )
+				{
+					if ( l == j )
+						continue;
+					else
+						result *= ( x - CollocationPoints[ m*( k + 1 ) + l ])/( CollocationPoints[ i ] - CollocationPoints[ m*( k + 1 ) + l ] );
+				}
+				if ( !::isfinite( result ) )
+					throw std::runtime_error( "Blergh" );
+				return result;
+			} else {
+				return 0.0;
+			}
+		}
+
+		double EvaluateLagrangeBasis( Eigen::Index i, double x ) const
+		{
+			Eigen::Index m = i/( k+1 );
+			Interval const &I = Mesh[ m ];
+			if ( I.contains( x ) ) {
+				// form lagrange polynomial j = i%(k+1) using the lagrange nodal points in the interval I
+				double result = 1.0;
+				Eigen::Index j = i %( k+1 );
+				for ( Eigen::Index l=0; l < k+1; l++ )
+				{
+					if ( l == j )
+						continue;
+					else
+						result *= ( x - *** )/( CollocationPoints[ i ] - CollocationPoints[ m*( k + 1 ) + l ] );
+				}
+				if ( !::isfinite( result ) )
+					throw std::runtime_error( "Blergh" );
+				return result;
+			} else {
+				return 0.0;
+			}
+		}
 		double EvaluateBasis( Eigen::Index i, double x ) {
 			if ( i > N )
 				throw std::runtime_error( "No basis function of index i exists" );
-			return EvaluateLegendreBasis( Mesh[ i / ( k + 1 ) ], i % ( k + 1 ), x );
+			return EvaluateLagrangeBasis( i, x );
 		}
 
 		std::vector<double> CollocationPoints;

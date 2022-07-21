@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <cmath>
 #include <string>
@@ -93,7 +94,7 @@ int main( int, char** )
 
 	std::cout << std::setprecision( 16 ) << std::endl;
 	
-	unsigned int N_Intervals = 16;
+	unsigned int N_Intervals = 48;
 	unsigned int PolynomialOrder = 2;
 
 	std::function<double( double )> CoilPsi = std::bind( PsiCoils, std::placeholders::_1, R_c, Z_c );
@@ -101,7 +102,7 @@ int main( int, char** )
 	std::cout << CoilPsi( 0.2 ) << '\t' << CoilPsi( 0.5 ) << '\t' << CoilPsi( 0.8 ) << std::endl;
 
 	CurrentB = std::bind( MidplaneB, std::placeholders::_1, R_c, Z_c );
-	HammersteinEquation PsiProblem( 0.1, 2, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
+	HammersteinEquation PsiProblem( 0.0, 1, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
 
 	sundials::Context sunctx;
 
@@ -120,7 +121,7 @@ int main( int, char** )
 	N_VConst( 0, zDataInit );
 
 	KinsolErrorWrapper( KINInit( kinMem, HammersteinEquation::KINSOL_Hammerstein, zDataInit ), "KINInit" );
-	KinsolErrorWrapper( KINSetPrintLevel( kinMem, 1 ), "KINSetPrintLevel" );
+	KinsolErrorWrapper( KINSetPrintLevel( kinMem, 0 ), "KINSetPrintLevel" );
 	KinsolErrorWrapper( KINSetUserData( kinMem, static_cast<void*>( &PsiProblem ) ), "KINSetUserData" );
 
 	SUNMatrix Jac = SUNDenseMatrix( NDims, NDims, sunctx );
@@ -144,24 +145,22 @@ int main( int, char** )
 	N_Vector one = N_VNew_Serial( NDims, sunctx );
 	N_VConst( 1.0, one );
 
-	KinsolErrorWrapper( KINSetMaxSetupCalls( kinMem, 1 ), "KINSetMaxSetupCalls" );
+	KinsolErrorWrapper( KINSetMaxSetupCalls( kinMem, 0 ), "KINSetMaxSetupCalls" );
 
-	/*
-	N_Vector F_out = N_VNew_Serial( NDims, sunctx );
-	PsiProblem.ComputeResidual( zDataInit, F_out );
-	PsiProblem.setzData( F_out );
-	std::cout << PsiProblem.EvaluateZ( 0.2 ) << '\t' << PsiProblem.EvaluateZ( 0.5 ) << '\t' << PsiProblem.EvaluateZ( 0.8 ) << std::endl;
-	std::cout << Jtor( 0.2, CoilPsi( 0.2 ) ) << '\t' << Jtor( 0.5, CoilPsi( 0.5 ) ) << '\t' << Jtor( 0.8, CoilPsi( 0.8 ) ) << std::endl;
-	std::cout << PsiProblem.EvaluateY( 0.2 ) << '\t' << PsiProblem.EvaluateY( 0.5 ) << '\t' << PsiProblem.EvaluateY( 0.8 ) << std::endl;
-
-	return 0;
-	*/
 	KinsolErrorWrapper( KINSol( kinMem, zDataInit, KIN_LINESEARCH, one, one ), "KINSol" );
 
 	PsiProblem.setzData( zDataInit );
 
-	std::cout << PsiProblem.EvaluateY( 0.2 ) << '\t' << PsiProblem.EvaluateY( 0.5 ) << '\t' << PsiProblem.EvaluateY( 0.8 ) << std::endl;
 
+	std::fstream out( "Psi.dat", std::ios_base::out );
+	unsigned int N_samples = 256;
+	out << "# R\tPsi" << std::endl;
+	for ( unsigned int i=0; i <= N_samples; i++ )
+	{
+		double R = 0.0 + ( 1.0 - 0.0 )*( static_cast<double>( i )/static_cast<double>( N_samples ) );
+		out << R << '\t' << CoilPsi( R ) << '\t' << PsiProblem.EvaluateY( R ) << std::endl;
+	}
+	out.close();
 
 	return 0;
 }
