@@ -91,7 +91,7 @@ int main( int argc, char** argv )
 	void *kinMem = KINCreate( sunctx );
 
 
-	TestProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder );
+	TestProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::GlobalChebyshev, false, 1.0 );
 
 	sunindextype NDims = TestProblem.getDimension();
 	N_Vector zDataInit = N_VNew_Serial( NDims, sunctx );

@@ -100,7 +100,7 @@ class GeneralizedHammersteinEquation {
 
 			if ( basis != nullptr )
 				delete basis;
-			basis = new CollocationBasis( Mesh, Order );
+			basis = new DGLegendreBasis( Mesh, Order );
 
 			// Form the matrix of elements u_j( tau_i ) where u_j are the basis functions
 			// and tau_i are the collocation points.

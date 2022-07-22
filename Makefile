@@ -1,6 +1,5 @@
 
-SUNDIALS_INC=/home/ian/projects/sundials-6/install/include
-SUNDIALS_LIB=/home/ian/projects/sundials-6/install/lib
+include Makefile.local
 
 SUNFLAGS=-I$(SUNDIALS_INC) -L$(SUNDIALS_LIB) -Wl,-rpath=$(SUNDIALS_LIB) 
 SUN_LINK_FLAGS = -lsundials_kinsol -lsundials_nvecserial -lsundials_sunlinsoldense

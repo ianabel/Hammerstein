@@ -421,7 +421,7 @@ int main( int argc, char** argv )
 				 << std::endl
 				 << " z(t) = (y(t))^2 " << std::endl;
 
-	Problem2.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, true, 0.75 );
+	Problem2.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::DGLegendre, true, 0.75 );
 	
 	std::cout << "Precomputation done." << std::endl;
 
