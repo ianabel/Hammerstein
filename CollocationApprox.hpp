@@ -246,5 +246,61 @@ class GlobalChebyshevBasis : public CollocationBasis
 		}
 };
 
+// Continuous finite elements
+class LagrangeBasis : public CollocationBasis
+{
+	public:
+		GaussNodes gauss;
+		LagrangeBasis( Mesh_t const& _m, unsigned int Order )
+			: CollocationBasis( _m, Order )
+		{
+			// There are only (|Mesh| * k) + 1 continuous finite elements
+			// rather than |Mesh| * ( k + 1 ) discontinuous ones
+			N = Mesh.size() * k + 1;
+			CollocationPoints.resize( N );
 
+			for ( Eigen::Index i=0; i < Mesh.size(); i++ )
+			{
+				// Translate uniform lagrange nodes
+				for ( Eigen::Index j=0; j < k; j++ )
+				{
+					CollocationPoints[ i*k + j ] = Mesh[ i ].x_l + Mesh[ i ].h() * ( j/ k );
+				}
+			}
+			CollocationPoints[ Mesh.size() * k ] = Mesh.back().x_u;
+		};
+
+
+		virtual double EvaluateBasis( Eigen::Index i, double x ) const 
+		{
+			Eigen::Index m = i/( k+1 );
+			Interval const &I = Mesh[ m ];
+			if ( x == I.x_u && x < Mesh.back().x_u )
+				return 0; // ensure only one basis function is ever non-zero at a cell boundary
+			if ( I.contains( x ) ) {
+				// form lagrange polynomial j = i%(k+1) using the lagrange nodal points in the interval I
+				double result = 1.0;
+				Eigen::Index j = i %( k+1 );
+				double node_j = Mesh[ m ].x_l + ( static_cast<double>( j )/static_cast<double>( k ))*( Mesh[ m ].x_u - Mesh[ m ].x_l );
+
+				for ( Eigen::Index l=0; l < k+1; l++ )
+				{
+					double node_l = Mesh[ m ].x_l + ( static_cast<double>( l )/static_cast<double>( k ))*( Mesh[ m ].x_u - Mesh[ m ].x_l );
+					if ( l == j )
+						continue;
+					else
+						result *= ( x - node_l )/( node_j - node_l );
+				}
+				if ( !::isfinite( result ) )
+					throw std::runtime_error( "Blergh" );
+				return result;
+			} else {
+				return 0.0;
+			}
+		}
+
+		virtual Interval const& supportOfElement( unsigned int i ) const {
+			return Mesh[ i / ( k + 1 ) ];
+		}
+}
 #endif // COLLOCATIONAPPROX_H
