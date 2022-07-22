@@ -118,6 +118,8 @@ class HammersteinEquation {
 					basis = new GlobalChebyshevBasis( Mesh, Order );
 					break;
 				case Lagrange:
+					basis = new LagrangeBasis( Mesh, Order );
+					break;
 				default:
 					basis = nullptr;
 			}
