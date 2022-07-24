@@ -109,7 +109,7 @@ int main( int, char** )
 	void *kinMem = KINCreate( sunctx );
 
 
-	PsiProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder );
+	PsiProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::Lagrange  );
 
 	sunindextype NDims = PsiProblem.getDimension();
 	N_Vector zDataInit = N_VNew_Serial( NDims, sunctx );

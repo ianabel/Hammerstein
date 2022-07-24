@@ -34,6 +34,8 @@ class Interval
 		double x_l,x_u;
 		bool contains( double x ) const { return ( x_l <= x ) && ( x <= x_u );};
 		double h() const { return ( x_u - x_l );};
+		// Maps to [0,1]
+		double TInverse( double x ) const { return ( x - x_l )/( x_u - x_l ); };
 };
 
 
@@ -263,7 +265,7 @@ class LagrangeBasis : public CollocationBasis
 				// Translate uniform lagrange nodes
 				for ( Eigen::Index j=0; j < k; j++ )
 				{
-					CollocationPoints[ i*k + j ] = Mesh[ i ].x_l + Mesh[ i ].h() * ( j/ k );
+					CollocationPoints[ i*k + j ] = Mesh[ i ].x_l + Mesh[ i ].h() * ( static_cast<double>( j )/ static_cast<double>( k ) );
 				}
 			}
 			CollocationPoints[ Mesh.size() * k ] = Mesh.back().x_u;
@@ -375,13 +377,15 @@ class LagrangeBasis : public CollocationBasis
 
 		virtual Interval supportOfElement( unsigned int i ) const {
 			if ( i % k == 0 && i > 0 && i < Mesh.size()*k ) 
-				return Interval( Mesh[ i / k - 1 ].x_l, Mesh[ i / k ].x_u );
+				return Interval( Mesh[ ( i / k ) - 1 ].x_l, Mesh[ i / k ].x_u );
+			else if ( i == Mesh.size()*k )
+				return Mesh.back();
 			else
 				return Mesh[ i / k ];
 		}
 };
 
-/*
+
 // Continuous finite elements
 class HermiteBasis : public CollocationBasis
 {
@@ -392,127 +396,107 @@ class HermiteBasis : public CollocationBasis
 			N = 2 * ( Mesh.size()  + 1 );
 			CollocationPoints.resize( N );
 
-			for ( Eigen::Index i=0; i < Mesh.size(); i++ )
+			CollocationPoints[ 0 ] = Mesh.front().x_l;
+			CollocationPoints[ 1 ] = Mesh.front().x_l + Mesh.front().h() * 0.25;
+			CollocationPoints[ 2 ] = Mesh.front().x_l + Mesh.front().h() * 0.50;
+
+			for ( Eigen::Index i=1; i < Mesh.size()-1; i++ )
 			{
-				// Translate uniform lagrange nodes
-				for ( Eigen::Index j=0; j < k; j++ )
-				{
-					CollocationPoints[ i*k + j ] = Mesh[ i ].x_l + Mesh[ i ].h() * ( j/ k );
-				}
+				CollocationPoints[ 2*i + 1 ] = Mesh[ i ].x_l;
+				CollocationPoints[ 2*i + 2 ] = Mesh[ i ].x_l + Mesh[ i ].h()*(1.0/2.0);
 			}
-			CollocationPoints[ Mesh.size() * k ] = Mesh.back().x_u;
+
+
+			CollocationPoints[ N - 3 ] = Mesh.back().x_u - Mesh.back().h()*0.50;
+			CollocationPoints[ N - 2 ] = Mesh.back().x_u - Mesh.back().h()*0.25;
+			CollocationPoints[ N - 1 ] = Mesh.back().x_u;
+
 		};
 
 
 		virtual double EvaluateBasis( Eigen::Index j, double x ) const 
 		{
 			// Handle endpoints first
-			if ( j == Mesh.size()*k ) {
-				Interval const&I = Mesh.back();
-				if ( I.contains( x ) ) {
-					// This should be Lagrange polynomial on the final interval with node x=b
-					double result = 1.0;
-					double node = I.x_u;
-
-					for ( Eigen::Index l=0; l < k; l++ )
-					{
-						double node_l = I.x_l + ( static_cast<double>( l )/static_cast<double>( k ))*( I.x_u - I.x_l );
-						result *= ( x - node_l )/( node - node_l );
-					}
-					if ( !::isfinite( result ) )
-						throw std::runtime_error( "Blergh" );
-					return result;
-				} else {
-					return 0.0;
-				}
-			} else if ( j == 0 ) {
+			if ( j < 3 ) {
 				Interval const&I = Mesh.front();
 				if ( I.contains( x ) ) {
-					// This should be Lagrange polynomial on the final interval with node x=b
-					double result = 1.0;
-					double node = I.x_l;
-
-					for ( Eigen::Index l=1; l < k+1; l++ )
-					{
-						double node_l = I.x_l + ( static_cast<double>( l )/static_cast<double>( k ))*( I.x_u - I.x_l );
-						result *= ( x - node_l )/( node - node_l );
+					switch ( j ) {
+						case 0:
+							return t1( I.TInverse( x ) );
+							break;
+						case 1:
+							return t2( I.TInverse( x ) );
+							break;
+						case 2:
+							return t4( I.TInverse( x ) );
+							break;
+						default:
+							return std::nan( "" );
 					}
-					if ( !::isfinite( result ) )
-						throw std::runtime_error( "Blergh" );
-					return result;
 				} else {
 					return 0.0;
 				}
-			}
-
-			Eigen::Index i = j/k;
-			Eigen::Index m = j % k;
-			Interval const &I = Mesh[ i ];
-
-			if ( m > 0 ) {
+			} else if ( j > N - 4 ) {
+				Interval const&I = Mesh.back();
 				if ( I.contains( x ) ) {
-					// form lagrange polynomial j = i%(k+1) using the lagrange nodal points in the interval I
-					double result = 1.0;
-					double node_m = I.x_l + ( static_cast<double>( m )/static_cast<double>( k ))*( I.x_u - I.x_l );
-
-					for ( Eigen::Index l=0; l < k+1; l++ )
-					{
-						double node_l = I.x_l + ( static_cast<double>( l )/static_cast<double>( k ))*( I.x_u - I.x_l );
-						if ( l == m )
-							continue;
-						else
-							result *= ( x - node_l )/( node_m - node_l );
+					switch ( N - j - 1 ) {
+						case 0:
+							return t3( I.TInverse( x ) );
+							break;
+						case 1:
+							return t2( I.TInverse( x ) );
+							break;
+						case 2:
+							return t4( I.TInverse( x ) );
+							break;
+						default:
+							return std::nan( "" );
 					}
-					if ( !::isfinite( result ) )
-						throw std::runtime_error( "Blergh" );
-					return result;
 				} else {
 					return 0.0;
 				}
 			}
+
+			Eigen::Index i = ( j - 1 )/2.0;
+			Eigen::Index m = j % 2;
+			Interval const &I = Mesh[ i ];
+			Interval const& Iminus = Mesh[ i - 1 ]; // i cannot be 0, because then m=0 => j=0 and that was done earlier
 
 			if ( m == 0 ) {
-				Interval const& Iminus = Mesh[ i - 1 ]; // i cannot be 0, because then m=0 => j=0 and that was done earlier
 				if ( Iminus.contains( x ) ) {
-					// This should be Lagrange polynomial on the i-1 interval with node x = Mesh[ i - 1 ].x_u == Mesh[i].x_l
-					double result = 1.0;
-					double node = Iminus.x_u;
-
-					for ( Eigen::Index l=0; l < k; l++ )
-					{
-						double node_l = Iminus.x_l + ( static_cast<double>( l )/static_cast<double>( k ))*( Iminus.x_u - Iminus.x_l );
-						result *= ( x - node_l )/( node - node_l );
-					}
-					if ( !::isfinite( result ) )
-						throw std::runtime_error( "Blergh" );
-					return result;
+					return t3( Iminus.TInverse( x ) );
 				} else if ( I.contains( x ) ){
-					double result = 1.0;
-					double node = I.x_l;
-
-					for ( Eigen::Index l=1; l < k+1; l++ )
-					{
-						double node_l = I.x_l + ( static_cast<double>( l )/static_cast<double>( k ))*( I.x_u - I.x_l );
-						result *= ( x - node_l )/( node - node_l );
-					}
-					if ( !::isfinite( result ) )
-						throw std::runtime_error( "Blergh" );
-					return result;
+					return t1( I.TInverse( x ) );
 				} else {
 					return 0.0;
 				}
 			}
-			if ( m<0 )
-				throw std::runtime_error( "WHAT UNGODLY HELL IS A NEGATIVE REMAINDER" );
+
+			if ( m == 1 ) {
+				if ( Iminus.contains( x ) ) {
+					return Iminus.h()*t4( Iminus.TInverse( x ) );
+				} else if ( I.contains( x ) ){
+					return I.h()*t2( I.TInverse( x ) );
+				} else {
+					return 0.0;
+				}
+			}
 			return std::nan( "" );
 		}
 
 		virtual Interval supportOfElement( unsigned int i ) const {
-			if ( i % k == 0 && i > 0 && i < Mesh.size()*k ) 
-				return Interval( Mesh[ i / k - 1 ].x_l, Mesh[ i / k ].x_u );
+			if ( i > 2 && i < N - 3 )
+				return Interval( Mesh[ ( i - 1 )/2 - 1 ].x_l, Mesh[ ( i - 1 )/2 ].x_u );
+			else if ( i < 2 )
+				return Mesh.front();
 			else
-				return Mesh[ i / k ];
+				return Mesh.back();
 		}
+	private:
+		double t1( double t ) const { return ( 2.0*t + 1.0 )*( t - 1.0 )*( t - 1.0 ); };
+		double t2( double t ) const { return t*( t - 1.0 )*( t - 1.0 ); };
+		double t3( double t ) const { return ( 3.0 - 2.0*t )*t*t; };
+		double t4( double t ) const { return ( t - 1.0 )*t*t; };
 };
-*/
+
 #endif // COLLOCATIONAPPROX_H

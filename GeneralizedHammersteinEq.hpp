@@ -265,20 +265,7 @@ class GeneralizedHammersteinEquation {
 			{
 				Sum += zData[ i ] * basis->EvaluateBasis( i, x );
 			}
-			unsigned int N_Intervals = std::count_if ( Mesh.begin(), Mesh.end(), 
-					[ x ]( Interval const& I ){
-						return ( x >= I.x_l && x <= I.x_u );
-					} );
-			if ( N_Intervals == 1 )
-				return Sum;
-			if ( N_Intervals == 2 )
-				return Sum/2.0;
-			if ( N_Intervals == 0 )
-				return 0.0;
-			else {
-				throw std::logic_error( "Mesh error detected" );
-				return 0.0;
-			}
+			return Sum;
 		};
 
 		/*

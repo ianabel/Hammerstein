@@ -58,7 +58,7 @@ double K_test( double x, double s, double sc ) {
 
 
 double y_star( double t ) {
-	return ::pow( t, 0.75 );
+	return ::pow( t, 3 );
 }
 
 double f_test( double t ) {
@@ -81,7 +81,7 @@ double f_test( double t ) {
 int main( int argc, char** argv )
 {
 
-	unsigned int N_Intervals = 16;
+	unsigned int N_Intervals = 32;
 	unsigned int PolynomialOrder = 2;
 
 	HammersteinEquation TestProblem( 0, 1, f_test, g_test, K_test );
@@ -91,7 +91,7 @@ int main( int argc, char** argv )
 	void *kinMem = KINCreate( sunctx );
 
 
-	TestProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::GlobalChebyshev, false, 1.0 );
+	TestProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::Lagrange, false, 1.0 );
 
 	sunindextype NDims = TestProblem.getDimension();
 	N_Vector zDataInit = N_VNew_Serial( NDims, sunctx );

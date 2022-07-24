@@ -68,7 +68,8 @@ class HammersteinEquation {
 			DGLegendre,
 			DGLagrange,
 			Lagrange,
-			GlobalChebyshev
+			GlobalChebyshev,
+			Hermite
 		} b_type;
 
 		/* Determines numerical resolution and precomputes the needed values */
@@ -120,6 +121,9 @@ class HammersteinEquation {
 				case Lagrange:
 					basis = new LagrangeBasis( Mesh, Order );
 					break;
+				case Hermite:
+					basis = new HermiteBasis( Mesh );
+					break;
 				default:
 					basis = nullptr;
 			}
@@ -151,7 +155,7 @@ class HammersteinEquation {
 
 					// Basis elements are rarely globally supported.
 					// Integrate only the non-zero region.
-					Interval const& basisSupport = basis->supportOfElement( j );
+					Interval basisSupport = basis->supportOfElement( j );
 					if ( !K_singular ) {
 						auto K_integrand = [ & ]( double s ) {
 							return K( basis->CollocationPoints[ i ], s )*basis->EvaluateBasis( j, s );
