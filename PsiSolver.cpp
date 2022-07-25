@@ -94,15 +94,15 @@ int main( int, char** )
 
 	std::cout << std::setprecision( 16 ) << std::endl;
 	
-	unsigned int N_Intervals = 48;
-	unsigned int PolynomialOrder = 2;
+	unsigned int N_Intervals = 50;
+	unsigned int PolynomialOrder = 3;
 
 	std::function<double( double )> CoilPsi = std::bind( PsiCoils, std::placeholders::_1, R_c, Z_c );
 
 	std::cout << CoilPsi( 0.2 ) << '\t' << CoilPsi( 0.5 ) << '\t' << CoilPsi( 0.8 ) << std::endl;
 
 	CurrentB = std::bind( MidplaneB, std::placeholders::_1, R_c, Z_c );
-	HammersteinEquation PsiProblem( 0.2, 0.5, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
+	HammersteinEquation PsiProblem( 0.0, 1.0, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
 
 	sundials::Context sunctx;
 
