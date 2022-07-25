@@ -56,7 +56,7 @@ double GradShafranovGreensFunction1D(double R, double R_star, double delta )
 // psi(R,z=0) = Int[ G(R,r) J_phi(r), {r,0,Infinity}]
 // B_z(R,z=0) = (1/R) d Psi / dR = (1/R) Int [ H(R,r) J_phi, {r,0,Infinity}], where this is a principal value integral
 
-// H(R,r) = a/(R-r) + H_weak(R,r)
+// H(R,r) = a/(r-R) + H_weak(R,r)
 // where H_weak is only logarithmically singular at R=r
 
 double DerivativeGreensFunction1D( double R, double R_star )
@@ -78,17 +78,19 @@ double DerivativeGreensFunction1D( double R, double R_star )
 
 double DerivativeGreensFunction1D_Residue( double R_star )
 {
-	return -( std::numbers::inv_pi/2.0 ) * R_star;
+	return ( std::numbers::inv_pi/2.0 ) * R_star;
 }
 
 // x = R - R_star;
 // This function returns H(R,R*) - a/(R-R*), by using a series expansion for small x and doing the subtraction otherwise
-double DerivativeGreensFunction1D_Weak( double x, double R_star )
+double DerivativeGreensFunction1D_Weak( double R, double R_star, double x )
 {
 	double eps = 1e-4;
-	if ( ::fabs( x ) > eps ){
-		return DerivativeGreensFunction1D( x + R_star, R_star ) - DerivativeGreensFunction1D_Residue( R_star )/( x );
+	if ( ::fabs( x ) > eps || ::fabs( R-R_star )>eps ){
+		return DerivativeGreensFunction1D( R, R_star ) - DerivativeGreensFunction1D_Residue( R_star )/( R_star - R );
 	} else {
+		if ( x== 0 )
+			x = R - R_star;
 		double y = x/R_star;
 		double logY = ::log( ::fabs( y ) ); 
 		double a =  ( std::numbers::inv_pi/8.0    )*(  -4.0 +   6.0*M_LN2 -   2.0*logY );

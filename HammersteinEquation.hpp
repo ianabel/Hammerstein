@@ -33,6 +33,60 @@
  * 
  */
 
+
+/*
+	Compute 
+	      / b    f( x )
+	I =PV |    --------- dx
+	      / a   x - tau
+	
+	by the method of [ P. Keller, I. Wrobel / Journal of Computational and Applied Mathematics 294 (2016) 323–341 ]
+
+	I = f( tau ) log[ ( b - tau )/( tau - a ) ] + I[ g( x ), {x,a,tau-delta} ] + I[ g( x ), {x,tau+delta,b} ] + I[ h( x ), {x, 0, delta} ]
+
+	g( x ) = ( f( x )-f( tau ) )/( x - tau );
+
+	h( x ) = (  f( tau + x ) - f( tau - x ) )/x;
+
+
+ */
+double CauchyPV( std::function<double( double )> f, double a, double b, double tau)
+{
+	double delta;
+
+	double I;
+
+	auto g = [ & ]( double x ){
+		return ( f( x ) - f( tau ) )/( x - tau );
+	};
+
+	auto h = [ & ]( double x ){
+		return ( f( tau + x ) - f( tau - x ) )/( x );
+	};
+
+	boost::math::quadrature::tanh_sinh<double> Int( 5, 1e-15 );
+
+	I = f( tau )*::log( ::fabs( ( b - tau )/( tau - a ) ) );
+
+	if ( tau - a < b - tau ) {
+		delta = tau - a;
+		if ( b - tau - delta > 1e-10 ) // g is a bounded function, so we can ignore if the interval is small
+			I += Int.integrate( g, tau + delta, b );
+	} else if ( b - tau < tau - a ) {
+		delta = b - tau;
+		if ( tau - delta - a > 1e-10 ) // as above
+			I += Int.integrate( g, a, tau - delta );
+	} else if ( b - tau == tau - a ) {
+		delta = b - tau;
+		I = 0;
+	}
+	
+	I += Int.integrate( h, 0, delta );
+
+	return I;
+
+}
+
 class HammersteinEquation {
 	public:
 		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double )> k )
@@ -237,6 +291,89 @@ class HammersteinEquation {
 			x = MassSolver.solve( b_vals );
 		}
 
+		// data needs to be allocated already
+		// you must have already precomputed the Mass matrix.
+		Eigen::VectorXd computeZCoefficients( std::function<double( double )> zZero )
+		{
+			Eigen::VectorXd b_vals( N );
+			#pragma omp parallel for
+			for ( Eigen::Index i=0; i<N; ++i )
+			{
+				double tau_i = basis->CollocationPoints[ i ];
+				b_vals( i ) = zZero( tau_i );
+			}
+			return MassSolver.solve( b_vals );
+		}
+
+		// Apply an integral operator to z, given in the form
+		//
+		// Iz = f*Int[ (K_pv(s)/(x-s) + K_I(x,s))*z, {x,a,b} ]
+		// 
+		// Returns Iz as a vector in the existing basis
+
+		Eigen::VectorXd applyIntegralOperator( std::function<double( double, double )> K_I, std::function<double( double )> K_pv = nullptr, std::function<double( double )> f = nullptr ) const
+		{
+			return applyIntegralOperator( [ & ]( double x, double s, double ){return K_I( x,s );}, K_pv, f );
+		}
+
+		Eigen::VectorXd applyIntegralOperator( std::function<double( double, double, double )> K_I, std::function<double( double )> K_pv = nullptr, std::function<double( double )> f = nullptr ) const
+		{
+			Eigen::MatrixXd I_ij    = Eigen::MatrixXd::Zero( N, N );
+			Eigen::MatrixXd I_pv_ij = Eigen::MatrixXd::Zero( N, N );
+			Eigen::VectorXd result = Eigen::VectorXd::Zero( N );
+			#pragma omp parallel for
+			for ( Eigen::Index i=0; i < N; i++ )
+				for ( Eigen::Index j=0; j < N; j++ )
+				{
+					// Basis elements are rarely globally supported.
+					// Integrate only the non-zero region.
+					Interval basisSupport = basis->supportOfElement( j );
+
+					auto K_integrand = [ & ]( double s, double sc ) {
+						return K_I( basis->CollocationPoints[ i ], s, -sc )*basis->EvaluateBasis( j, s );
+					};
+					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+					if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
+						if ( basisSupport.x_l == basis->CollocationPoints[ i ] || basisSupport.x_u == basis->CollocationPoints[ i ] )
+							I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u ) ;
+						else
+							I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ] ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u ) ;
+					} else {
+						I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u );
+					}
+
+					// Do the Cauchy Principal Value integral
+					if ( K_pv ) {
+						
+						if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
+							// Really is a PV integral on this interval
+							auto K_pv_integrand = [ & ]( double s ){
+								return K_pv( s )*basis->EvaluateBasis( j, s );
+							};
+							I_pv_ij( i, j ) = CauchyPV( K_pv_integrand, basisSupport.x_l, basisSupport.x_u, basis->CollocationPoints[ i ] );
+						} else {
+							// not really a PV integral, everything is bounded
+							boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+							auto K_pv_bounded = [ & ]( double s ){
+								return ( K_pv( s )/( s-basis->CollocationPoints[ i ] ) )*basis->EvaluateBasis( j, s );
+							};
+							I_pv_ij( i, j ) = integrator.integrate( K_pv_bounded, basisSupport.x_l, basisSupport.x_u );
+						}
+					}
+					
+					if ( f ) {
+						I_ij( i, j ) *= f( basis->CollocationPoints[ i ] );
+						I_pv_ij( i, j ) *= f( basis->CollocationPoints[ i ] );
+					}
+
+				}
+
+			result = MassSolver.solve( I_ij * zData + I_pv_ij * zData );
+
+			return result;
+		}
+
 		/*
 		 * Need to have already set gPrime
 		 */
@@ -264,6 +401,14 @@ class HammersteinEquation {
 			new( &zData ) VecMap( NV_DATA_S( u ), N );
 		}
 
+		void setzData( Eigen::VectorXd &u )
+		{
+			if ( u.size() != N )
+				throw std::runtime_error( "Cannot set z data to a vector of the wrong size" );
+			else
+				new( &zData ) VecMap( u.data(), N );
+		}
+
 		static int KINSOL_Hammerstein( N_Vector u, N_Vector F, void* problemData )
 		{
 			HammersteinEquation *pHammer = reinterpret_cast<HammersteinEquation*>( problemData );
@@ -280,14 +425,18 @@ class HammersteinEquation {
 			return N;
 		};
 
-		double EvaluateZ( double x ) {
+		double Evaluate( Eigen::VectorXd const& data, double x ) const {
 			double Sum = 0;
 #pragma omp for reduce( +: Sum )
 			for ( Eigen::Index i = 0; i < N; ++i )
 			{
-				Sum += zData[ i ] * basis->EvaluateBasis( i, x );
+				Sum += data[ i ] * basis->EvaluateBasis( i, x );
 			}
 			return Sum;
+		};
+
+		double EvaluateZ( double x ) const {
+			return Evaluate( zData, x );
 		};
 
 		/*

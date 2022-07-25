@@ -46,7 +46,7 @@ void KinsolErrorWrapper( int errorFlag, std::string&& fName )
 
 
 double g_test( double s, double y ) {
-	return y*y*s;
+	return y*y;
 }
 
 double K_test( double x, double s, double sc ) {
@@ -58,7 +58,7 @@ double K_test( double x, double s, double sc ) {
 
 
 double y_star( double t ) {
-	return ::pow( t, 3 );
+	return ::pow( t, 3.0/2.0 );
 }
 
 double f_test( double t ) {
@@ -91,7 +91,7 @@ int main( int argc, char** argv )
 	void *kinMem = KINCreate( sunctx );
 
 
-	TestProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::Lagrange, false, 1.0 );
+	TestProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::DGLegendre, false, 1.0 );
 
 	sunindextype NDims = TestProblem.getDimension();
 	N_Vector zDataInit = N_VNew_Serial( NDims, sunctx );
@@ -181,6 +181,24 @@ int main( int argc, char** argv )
 	std::cout << "\tL_1 error = " << err.lpNorm<1>() << std::endl;
 	std::cout << "\tL_2 error = " << err.lpNorm<2>() << std::endl;
 	std::cout << "\tL_Inf error = " << err.lpNorm<Eigen::Infinity>() << std::endl;
+
+
+	// z now contains the data for g(y_star(t)) = t^3
+	// Test applying an integral operator.
+
+	auto K_operator = []( double x, double t ) {
+		return -16.0/3.0;
+	};
+
+	auto K_residue = []( double t ){
+		return 1.0;
+	};
+
+	Eigen::VectorXd pv_result = TestProblem.applyIntegralOperator( K_operator, K_residue );
+
+	std::cout << "Kz(t=0.5) = " << TestProblem.Evaluate( pv_result, 0.5 ) << std::endl;
+	std::cout << CauchyPV( []( double t ){return t*t*t;}, 0, 1, 0.5 ) << std::endl;
+	std::cout << "  should be " << -0.5 << std::endl;
 
 	return 0;
 }

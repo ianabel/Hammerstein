@@ -102,15 +102,68 @@ int main( int, char** )
 	std::cout << CoilPsi( 0.2 ) << '\t' << CoilPsi( 0.5 ) << '\t' << CoilPsi( 0.8 ) << std::endl;
 
 	CurrentB = std::bind( MidplaneB, std::placeholders::_1, R_c, Z_c );
-	HammersteinEquation PsiProblem( 0.0, 1, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
+	HammersteinEquation PsiProblem( 0.2, 0.5, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
 
 	sundials::Context sunctx;
 
 	void *kinMem = KINCreate( sunctx );
 
+	PsiProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::DGLegendre );
 
-	PsiProblem.SetResolutionAndPrecompute( N_Intervals, PolynomialOrder, HammersteinEquation::BasisType::Lagrange  );
+	auto Jphi = []( double t ){ 
+		if ( t < 0.2 || t > 0.5 )
+			return 0.0;
+		else
+			return 0.1*( t - 0.2 )*( 0.5 - t ) / ( 0.15 * 0.15 );
+	};
+	Eigen::VectorXd zTmp = PsiProblem.computeZCoefficients( Jphi );
 
+	PsiProblem.setzData( zTmp );
+	double R_eval=0.25;
+	std::cout << CurrentB( 0.25 ) << std::endl;
+	auto Hintegrand = [ & ]( double r ){
+		return ( DerivativeGreensFunction1D_Weak( R_eval, r, R_eval-r ) )*Jphi( r );
+	};
+
+	boost::math::quadrature::tanh_sinh<double> integrator( 8, 1e-15 );
+
+	double pvp = CauchyPV( [ & ]( double x ){ return DerivativeGreensFunction1D_Residue( x )*Jphi( x );}, 0.2, 0.5, 0.25 ) ;
+	std::cout << MidplaneB( R_eval, R_c, Z_c ) - ( pvp + integrator.integrate( Hintegrand, 0.2, R_eval ) + integrator.integrate( Hintegrand, R_eval,0.5 ) )/( R_eval ) << std::endl;
+	
+
+	auto PsiIntegrand = [ & ]( double R, double Rs, double x ) {
+		if ( ::fabs( R - Rs )>1e-4 )
+		{
+			return GradShafranovGreensFunction1D( R, Rs, R-Rs ) * Jphi( Rs );
+		}
+		else
+		{
+			return GradShafranovGreensFunction1D( R, Rs, x )*Jphi( Rs );
+		}
+	};
+	auto PsiNew = [ & ]( double R ) {
+		boost::math::quadrature::tanh_sinh<double> integrator( 8, 1e-15 );
+		auto PI = std::bind( PsiIntegrand, R, std::placeholders::_1, std::placeholders::_2 );
+		return CoilPsi( R ) - integrator.integrate( PI, 0.2, R ) - integrator.integrate( PI, R, 0.5 );
+	};
+
+	std::cout << PsiNew( 0.24 ) << '\t' << PsiNew( 0.26 ) << std::endl;
+	std::cout << ( PsiNew( 0.251 ) - PsiNew( 0.249 ) )/( 0.002*0.25 ) << std::endl;
+
+	auto B_operator_smooth = [ & ]( double R, double Rs, double sc ){
+		if ( ::fabs( R-Rs ) > 1e-4 )
+			return ( DerivativeGreensFunction1D_Weak( R, Rs, R - Rs ));
+		else
+			return ( DerivativeGreensFunction1D_Weak( R, Rs, sc ) );
+	};
+
+	auto B_operator_pv = [ & ]( double Rs ) {
+		return DerivativeGreensFunction1D_Residue( Rs );
+	};
+
+	Eigen::VectorXd B_data = PsiProblem.applyIntegralOperator( B_operator_smooth, B_operator_pv, [ & ]( double R ){return 1.0/R;} );
+	std::cout << MidplaneB( 0.15, R_c, Z_c ) - PsiProblem.Evaluate( B_data, 0.15 ) << std::endl;
+	std::cout << MidplaneB( 0.25, R_c, Z_c ) - PsiProblem.Evaluate( B_data, 0.25 ) << std::endl;
 	sunindextype NDims = PsiProblem.getDimension();
 	N_Vector zDataInit = N_VNew_Serial( NDims, sunctx );
 
@@ -138,7 +191,6 @@ int main( int, char** )
 	KinsolErrorWrapper( KINSetScaledStepTol( kinMem, scstol ), "KINSetScaledStepTol" );
 	KinsolErrorWrapper( KINSetRelErrFunc( kinMem, jtol ), "KINSetRelErrFunc" );
 
-
 	N_Vector zero = N_VNew_Serial( NDims, sunctx );
 	N_VConst( 0.0, zero );
 
@@ -153,6 +205,8 @@ int main( int, char** )
 
 
 	std::fstream out( "Psi.dat", std::ios_base::out );
+
+
 	unsigned int N_samples = 256;
 	out << "# R\tPsi" << std::endl;
 	for ( unsigned int i=0; i <= N_samples; i++ )

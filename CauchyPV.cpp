@@ -8,6 +8,7 @@
  * Use a routine to compute Cauchy principle value integrals
  */
 
+#include "HammersteinEquation.hpp"
 
 /*
 	Compute 
