@@ -427,7 +427,7 @@ class HammersteinEquation {
 
 		double Evaluate( Eigen::VectorXd const& data, double x ) const {
 			double Sum = 0;
-#pragma omp for reduce( +: Sum )
+			#pragma omp parallel for reduction( +: Sum )
 			for ( Eigen::Index i = 0; i < N; ++i )
 			{
 				Sum += data[ i ] * basis->EvaluateBasis( i, x );
