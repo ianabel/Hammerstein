@@ -63,7 +63,7 @@ double y_star( double t ) {
 
 double f_test( double t ) {
 	
-	boost::math::quadrature::tanh_sinh<double> integrator( 5, 1e-14 );
+	boost::math::quadrature::tanh_sinh<double> integrator( 2, 1e-9 );
 
 	auto integrand = [ & ]( double s, double sc ){
 		return K_test( t, s, sc )*g_test( s, y_star( s ) );
@@ -81,7 +81,7 @@ double f_test( double t ) {
 int main( int argc, char** argv )
 {
 
-	unsigned int N_Intervals = 32;
+	unsigned int N_Intervals = 96;
 	unsigned int PolynomialOrder = 2;
 
 	HammersteinEquation TestProblem( 0, 1, f_test, g_test, K_test );

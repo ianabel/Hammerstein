@@ -95,6 +95,7 @@ class HammersteinEquation {
 
 		};
 
+		// If there is a version of k that can be evaluated near s=t
 		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double, double )> k )
 			: a( A ), b( B ), f( F ), g( G ), K( nullptr ),K_singular( k ), basis( nullptr ), zData( nullptr, 0 )
 		{
@@ -201,6 +202,8 @@ class HammersteinEquation {
 			//        / b
 			// K_ij = |   K( tau_i, s ) u_j( s ) ds
 			//        / a
+			//
+			boost::math::quadrature::tanh_sinh<double> integrator( 0, 1e-9 ); // Over-integrating takes time, so be conservative here
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i < N; i++ )
 				for ( Eigen::Index j=0; j < N; j++ )
@@ -214,26 +217,24 @@ class HammersteinEquation {
 						auto K_integrand = [ & ]( double s ) {
 							return K( basis->CollocationPoints[ i ], s )*basis->EvaluateBasis( j, s );
 						};
-						boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
 						if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
-							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ] ) +
-								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u ) ;
+							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ], 1e-3 ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, 1e-3 ) ;
 						} else {
-							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u );
+							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, 1e-3 );
 						}
 					} else {
 						auto K_integrand = [ & ]( double s, double sc ) {
 							return K_singular( basis->CollocationPoints[ i ], s, -sc )*basis->EvaluateBasis( j, s );
 						};
-						boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
 						if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
 							if ( basisSupport.x_l == basis->CollocationPoints[ i ] || basisSupport.x_u == basis->CollocationPoints[ i ] )
-								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u ) ;
+								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, 1e-3 ) ;
 							else
 								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ] ) +
-									integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u ) ;
+									integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, 1e-3 ) ;
 						} else {
-							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u );
+							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, 1e-3 );
 						}
 					}
 				}

@@ -6,6 +6,14 @@
 #include <cmath>
 #include <numbers>
 
+#ifdef USE_STD_ELLIPTIC
+	#define EllipticK( k ) std::comp_ellint_1( k )
+	#define EllipticE( k ) std::comp_ellint_2( k )
+#else
+	#define EllipticK( k ) boost::math::ellint_1( k )
+	#define EllipticE( k ) boost::math::ellint_2( k )
+#endif
+
 double GradShafranovGreensFunction( double R, double R_star, double Z, double Z_star )
 {
 	double answer = std::numbers::inv_pi / 2.0;
@@ -14,7 +22,7 @@ double GradShafranovGreensFunction( double R, double R_star, double Z, double Z_
 	double k_squared = 4 * R * R_star / ( ( R + R_star )*( R + R_star ) + ( Z - Z_star )*( Z - Z_star ) );
 	double k = ::sqrt( k_squared );
 
-	answer *= ::sqrt( ( R + R_star )*( R + R_star ) + ( Z - Z_star )*( Z - Z_star ) ) * ( ( 1.0 - 0.5*k_squared )*boost::math::ellint_1( k ) - boost::math::ellint_2( k ) );
+	answer *= ::sqrt( ( R + R_star )*( R + R_star ) + ( Z - Z_star )*( Z - Z_star ) ) * ( ( 1.0 - 0.5*k_squared )*EllipticK( k ) - EllipticE( k ) );
 
 	return answer;
 }
@@ -37,7 +45,7 @@ double GradShafranovGreensFunction1D(double R, double R_star, double delta )
 			k = ::sqrt( k_squared );
 		}
 
-		answer *= ( R + R_star ) * ( ( 1.0 - 0.5*k_squared )*boost::math::ellint_1( k ) - boost::math::ellint_2( k ) );
+		answer *= ( R + R_star ) * ( ( 1.0 - 0.5*k_squared )*EllipticK( k ) - EllipticE( k ) );
 
 		return answer;
 	} else {
@@ -68,7 +76,7 @@ double DerivativeGreensFunction1D( double R, double R_star )
 		double k_squared = 4 * R * R_star / ( ( R + R_star )*( R + R_star ) );
 		double k = ::sqrt( k_squared );
 
-		answer =  ( std::numbers::inv_pi*R / 2.0 ) * ( boost::math::ellint_2( k )/( R_star - R ) + boost::math::ellint_1( k )/( R_star + R ) );
+		answer =  ( std::numbers::inv_pi*R / 2.0 ) * ( EllipticE( k )/( R_star - R ) + EllipticK( k )/( R_star + R ) );
 
 		return answer;
 	} else {
@@ -110,7 +118,7 @@ double MidplaneB( double R, double R_coil, double Z_coil )
 
 	double answer = 0;
 
-	answer = ( ( ( R - R_coil )*( R - R_coil ) + Z_coil*Z_coil )*booost::math::ellint_1( k ) - ( R*R - R_coil*R_coil + Z_coil*Z_coil )*boost::math::ellint_2( k ) ) / ( M_PI * ( ( R - R_coil )*( R - R_coil ) + Z_coil*Z_coil ) * ( ::sqrt( ( R + R_coil )*( R + R_coil ) + Z_coil * Z_coil ) ) );
+	answer = ( ( ( R - R_coil )*( R - R_coil ) + Z_coil*Z_coil )*booost::math::ellint_1( k ) - ( R*R - R_coil*R_coil + Z_coil*Z_coil )*EllipticE( k ) ) / ( M_PI * ( ( R - R_coil )*( R - R_coil ) + Z_coil*Z_coil ) * ( ::sqrt( ( R + R_coil )*( R + R_coil ) + Z_coil * Z_coil ) ) );
 
 	return answer;
 }
