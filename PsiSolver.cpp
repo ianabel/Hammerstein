@@ -3,6 +3,7 @@
 #include <nvector/nvector_serial.h>    /* access to serial N_Vector       */
 #include <sunmatrix/sunmatrix_dense.h> /* access to dense SUNMatrix       */
 #include <sunlinsol/sunlinsol_dense.h> /* access to dense SUNLinearSolver */
+#include <sunlinsol/sunlinsol_lapackdense.h> /* access to dense SUNLinearSolver */
 
 #include <functional>
 #include <iostream>
@@ -165,7 +166,7 @@ double omega( double psi )
 
 	SUNMatrix Jac = SUNDenseMatrix( NDims, NDims, sunctx );
 
-	SUNLinearSolver LS = SUNLinSol_Dense( zDataInit, Jac, sunctx );
+	SUNLinearSolver LS = SUNLinSol_LapackDense( zDataInit, Jac, sunctx );
 
 	KinsolErrorWrapper( KINSetLinearSolver( kinMem, LS, Jac ), "KINSetLinearSolver" );
 
