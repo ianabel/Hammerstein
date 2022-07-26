@@ -51,7 +51,7 @@ double MidplaneB( double R, double R_coil, double Z_coil )
 }
 //  GradShafranovGreensFunction( R, Rprime, 0.0, 0.0 ) * om * om * Rprime / Bz( OldPsi, Rprime );
 
-constexpr double OmegaMax = 0.4;
+constexpr double OmegaMax = 0.3;
 double PsiInner,PsiOuter;
 double omega( double psi )
 {
@@ -220,7 +220,8 @@ int main( int, char** )
 	for ( unsigned int i=0; i <= N_samples; i++ )
 	{
 		double R = 0.0 + ( 1.0 - 0.0 )*( static_cast<double>( i )/static_cast<double>( N_samples ) );
-		out << R << '\t' << CoilPsi( R ) << '\t' << PsiProblem.EvaluateY( R ) << '\t' << MidplaneB( R, R_c, Z_c ) << '\t' << MidplaneB( R, R_c, Z_c ) + PsiProblem.Evaluate( B_data, R ) << std::endl;
+		double psi = PsiProblem.EvaluateY( R );
+		out << R << '\t' << CoilPsi( R ) << '\t' << psi << '\t' << MidplaneB( R, R_c, Z_c ) << '\t' << MidplaneB( R, R_c, Z_c ) + PsiProblem.Evaluate( B_data, R ) << '\t' << omega( psi ) << std::endl;
 	}
 	out.close();
 
