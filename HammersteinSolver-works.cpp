@@ -51,12 +51,12 @@ double g_test( double s, double y, double y_prime ) {
 	return y*y/y_prime;
 }
 
-// constexpr double alpha = 0.25;
+constexpr double alpha = 0.25;
 double K_test( double x, double s, double sc ) {
 	if ( ::fabs( x-s ) > 1e-6 )
-		return ::log( ::fabs( x - s ) );
+		return ::pow( ::fabs( x - s ), 0.25 );
 	else
-		return ::log( ::fabs( sc ) );
+		return ::pow( ::fabs( sc ), 0.25 );
 }
 
 
@@ -73,24 +73,6 @@ double g_star( double t )
 	return ( 2.0/3.0 )*::pow( t, 5.0/2.0 );
 }
 
-
-// f = y* - I(Kg*)
-double f_test( double t )
-{
-	if ( t == 1 )
-		return y_star( t ) - ( 2.0/3.0 )*( 4.0*M_LN2/7.0 - 704.0/735.0 );
-
-	double tmp = -( 4.0/735.0 )*( 15.0 + 7*t*( 3.0 + 5.0*t*( 1.0 + 3.0*t ) ) ) + ( 4.0/14.0 )*::pow( t, 7.0/2.0 )*( ::log( 1.0 + ::sqrt( t ) ) - ::log( 1 - ::sqrt( t ) ) ) +( 2.0/7.0 )*::log( 1.0 - t );
-	return y_star( t ) - ( 2.0/ 3.0 )*tmp;
-}
-
-double f_test_prime( double t )
-{
-	double tmp = -0.4 - ( 2.0/3.0 )*t*( 1.0 + 3.0*t ) + ::pow( t, 2.5 )*( ::log( 1+::sqrt( t ) )-::log( 1-::sqrt( t ) ) );
-	return y_star_prime( t ) - ( 2.0/3.0 )*tmp;
-}
-
-/*
 double f_test( double t ) {
 	
 	boost::math::quadrature::tanh_sinh<double> integrator( 15, 1e-40 );
@@ -106,10 +88,8 @@ double f_test( double t ) {
 		return y_star( t ) - integrator.integrate( integrand, 0, t ) - integrator.integrate( integrand, t, 1 );
 
 };
-*/
 
 double K_test_prime( double x, double s, double sc ) {
-	return 0.0;
 	if ( ::fabs( x - s ) > 1e-6 ) {
 		if ( s < x )
 			return 0.25*::pow( x - s, -0.75 );
@@ -127,9 +107,7 @@ double K_test_prime( double x, double s, double sc ) {
 	}
 }
 
-/*
 double f_test_prime( double t ) {
-	return 0.0;
 	boost::math::quadrature::tanh_sinh<double> integrator( 15, 1e-40 );
 
 	auto integrand = [ & ]( double s, double sc ){
@@ -143,18 +121,16 @@ double f_test_prime( double t ) {
 		return y_star_prime( t ) - integrator.integrate( integrand, 0, t ) - integrator.integrate( integrand, t, 1 );
 
 };
-*/
-
 
 double K_test_prime_pv( double s ) {
-	return -1.0;
+	return 0.0;
 }
 
 int main( int argc, char** argv )
 {
 
-	unsigned int N_Intervals = 32;
-	unsigned int PolynomialOrder = 2;
+	unsigned int N_Intervals = 64;
+	unsigned int PolynomialOrder = 3;
 
 	HammersteinEquation TestProblem( 0, 1, f_test, g_test, K_test, f_test_prime, K_test_prime, K_test_prime_pv );
 
@@ -172,24 +148,7 @@ int main( int argc, char** argv )
 
 	// Initial Condition near known answer.
 
-	TestProblem.computeCoefficients( NV_DATA_S( zDataInit ), []( double t ){ return ::pow( t, 1.25 );}, []( double t ){return 1.25*::pow( t, 0.25 );} );
-
-	TestProblem.setzData( zDataInit );
-
-	auto Kt_operator = []( double x, double t ) {
-		return 0.0;
-	};
-
-	auto Kt_residue = []( double t ){
-		return -1.0;
-	};
-
-	Eigen::VectorXd tmp = TestProblem.applyIntegralOperator( Kt_operator, Kt_residue );
-
-	double x = 0.33;
-	std::cout << "Integral formulation of the derivative at " << x << " is " << TestProblem.Evaluate( tmp, x ) << std::endl;
-	std::cout << "f'(" << x << ") is " << f_test_prime( x ) << std::endl;
-
+	TestProblem.computeCoefficients( NV_DATA_S( zDataInit ), []( double t ){ return ::pow( t, 1.4 );}, []( double t ){return 1.4*::pow( t, 0.4 );} );
 
 
 	KinsolErrorWrapper( KINInit( kinMem, HammersteinEquation::KINSOL_Hammerstein, zDataInit ), "KINInit" );
@@ -202,7 +161,7 @@ int main( int argc, char** argv )
 
 	KinsolErrorWrapper( KINSetLinearSolver( kinMem, LS, Jac ), "KINSetLinearSolver" );
 
-	double ftol = 1.e-10;
+	double ftol = 1.e-12;
 	double scstol = 1.e-6;
 	double jtol = 1.e-6;
 
@@ -289,15 +248,9 @@ int main( int argc, char** argv )
 
 	Eigen::VectorXd pv_result = TestProblem.applyIntegralOperator( K_operator, K_residue );
 
-	std::cout << std::setprecision( 12 );
-	std::cout << "Kz(t=0.5)  = " << TestProblem.Evaluate( pv_result, 0.5 ) << std::endl;
-	std::cout << "         PV  " << HammersteinEquation::CauchyPV( g_star, 0, 1, 0.5 ) << std::endl;
-
-	TestProblem.computeCoefficients( NV_DATA_S( zDataInit ), y_star, y_star_prime );
-	pv_result = TestProblem.applyIntegralOperator( K_operator, K_residue );
-	std::cout << "Kz*(t=0.5) = " << TestProblem.Evaluate( pv_result, 0.5 ) << std::endl;
-
-	std::cout << TestProblem.Mass.norm() << std::endl;
+	std::cout << "Kz(t=0.5) = " << TestProblem.Evaluate( pv_result, 0.5 ) << std::endl;
+	std::cout << HammersteinEquation::CauchyPV( []( double t ){return ( 2.0/3.0 )*::pow( t, 2.5 );}, 0, 1, 0.5 ) << std::endl;
+	std::cout << "  should be " << -0.5 << std::endl;
 
 	return 0;
 }

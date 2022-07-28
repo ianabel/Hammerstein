@@ -50,60 +50,76 @@
 
 
  */
-double CauchyPV( std::function<double( double )> f, double a, double b, double tau)
-{
-	double delta;
 
-	double I;
-
-	auto g = [ & ]( double x ){
-		return ( f( x ) - f( tau ) )/( x - tau );
-	};
-
-	auto h = [ & ]( double x ){
-		return ( f( tau + x ) - f( tau - x ) )/( x );
-	};
-
-	boost::math::quadrature::tanh_sinh<double> Int( 5, 1e-15 );
-
-	I = f( tau )*::log( ::fabs( ( b - tau )/( tau - a ) ) );
-
-	if ( tau - a < b - tau ) {
-		delta = tau - a;
-		if ( b - tau - delta > 1e-10 ) // g is a bounded function, so we can ignore if the interval is small
-			I += Int.integrate( g, tau + delta, b );
-	} else if ( b - tau < tau - a ) {
-		delta = b - tau;
-		if ( tau - delta - a > 1e-10 ) // as above
-			I += Int.integrate( g, a, tau - delta );
-	} else if ( b - tau == tau - a ) {
-		delta = b - tau;
-		I = 0;
-	}
-	
-	I += Int.integrate( h, 0, delta );
-
-	return I;
-
-}
 
 class HammersteinEquation {
 	public:
 		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double )> k )
 			: a( A ), b( B ), f( F ), g( G ), K( k ),K_singular( nullptr ), basis( nullptr ), zData( nullptr, 0 )
 		{
-
+			fPrime = nullptr; Kprime = nullptr;
+			KPrimePV = nullptr; gThree = nullptr;
+			isGeneralized = false;
 		};
 
 		// If there is a version of k that can be evaluated near s=t
 		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double, double )> k )
 			: a( A ), b( B ), f( F ), g( G ), K( nullptr ),K_singular( k ), basis( nullptr ), zData( nullptr, 0 )
 		{
+			fPrime = nullptr; Kprime = nullptr;
+			KPrimePV = nullptr; gThree = nullptr;
+			isGeneralized = false;
+		};
+
+		// If there is a version of k that can be evaluated near s=t
+		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double, double )> G, std::function<double( double, double, double )> k,
+				std::function<double( double )> Fprime, std::function<double( double, double, double )> kPrime, std::function<double( double )> kPrimePV )
+			: a( A ), b( B ), f( F ), fPrime( Fprime ), KPrimePV( kPrimePV ), gThree( G ), K( nullptr ),K_singular( k ), Kprime( kPrime ), basis( nullptr ), zData( nullptr, 0 )
+		{
+			g = nullptr; isGeneralized = true;
 
 		};
 
+		static double CauchyPV( std::function<double( double )> f, double a, double b, double tau)
+		{
+			double delta;
 
-		constexpr static const double tanhsinh_tol = 1e-15;
+			double I;
+
+			auto g = [ & ]( double x ){
+				return ( f( x ) - f( tau ) )/( x - tau );
+			};
+
+			auto h = [ & ]( double x ){
+				return ( f( tau + x ) - f( tau - x ) )/( x );
+			};
+
+			boost::math::quadrature::tanh_sinh<double> Int( 5, tanhsinh_min_dist );
+
+			I = f( tau )*::log( ::fabs( ( b - tau )/( tau - a ) ) );
+
+			if ( tau - a < b - tau ) {
+				delta = tau - a;
+				if ( b - tau - delta > 1e-10 ) // g is a bounded function, so we can ignore if the interval is small
+					I += Int.integrate( g, tau + delta, b, tanhsinh_tol );
+			} else if ( b - tau < tau - a ) {
+				delta = b - tau;
+				if ( tau - delta - a > 1e-10 ) // as above
+					I += Int.integrate( g, a, tau - delta, tanhsinh_tol );
+			} else if ( b - tau == tau - a ) {
+				delta = b - tau;
+				I = 0;
+			}
+
+			I += Int.integrate( h, 0, delta, tanhsinh_tol );
+
+			return I;
+
+		}
+
+		constexpr static const double tanhsinh_min_dist = 1e-14;
+		constexpr static const unsigned int tanhsinh_ref = 2;
+		constexpr static const double tanhsinh_tol = 1e-8;
 
 		~HammersteinEquation() {
 			if ( basis != nullptr )
@@ -111,13 +127,14 @@ class HammersteinEquation {
 		}
 
 		double a,b;
-		std::function<double( double )> f;
+		bool isGeneralized;
+		std::function<double( double )> f,fPrime,KPrimePV;
 		std::function<double( double, double )> g,K,gPrime;
-		std::function<double( double, double, double )> K_singular;
+		std::function<double( double, double, double )> gThree,K_singular, Kprime;
 
 		Eigen::MatrixXd Mass;
-		Eigen::MatrixXd K_ij;
-		Eigen::VectorXd fVals;
+		Eigen::MatrixXd K_ij,Kprime_ij,Kprime_pv_ij;
+		Eigen::VectorXd fVals,fPrimeVals;
 
 		enum BasisType {
 			DGLegendre,
@@ -135,12 +152,12 @@ class HammersteinEquation {
 
 			Mesh.clear();
 			if ( !gradedMesh ) {
-			// Construct uniform mesh
-			double h = static_cast<double>( b - a )/N_Intervals;
-			for ( Eigen::Index i=0; i < N_Intervals; i++ )
-			{
-				Mesh.emplace_back( a + i*h, a + ( i + 1 )*h );
-			}
+				// Construct uniform mesh
+				double h = static_cast<double>( b - a )/N_Intervals;
+				for ( Eigen::Index i=0; i < N_Intervals; i++ )
+				{
+					Mesh.emplace_back( a + i*h, a + ( i + 1 )*h );
+				}
 			} else { 
 				// m in the papers is N_Gauss here
 				double q = static_cast<double>( N_Gauss )/( gradingAlpha );
@@ -203,13 +220,11 @@ class HammersteinEquation {
 			// K_ij = |   K( tau_i, s ) u_j( s ) ds
 			//        / a
 			//
-			boost::math::quadrature::tanh_sinh<double> integrator( 0, 1e-9 ); // Over-integrating takes time, so be conservative here
+			boost::math::quadrature::tanh_sinh<double> integrator( tanhsinh_ref, tanhsinh_min_dist ); // Over-integrating takes time, so be conservative here
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i < N; i++ )
 				for ( Eigen::Index j=0; j < N; j++ )
 				{
-					double Kij = 0;
-
 					// Basis elements are rarely globally supported.
 					// Integrate only the non-zero region.
 					Interval basisSupport = basis->supportOfElement( j );
@@ -218,10 +233,10 @@ class HammersteinEquation {
 							return K( basis->CollocationPoints[ i ], s )*basis->EvaluateBasis( j, s );
 						};
 						if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
-							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ], 1e-3 ) +
-								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, 1e-3 ) ;
+							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ], tanhsinh_tol ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, tanhsinh_tol );
 						} else {
-							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, 1e-3 );
+							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 						}
 					} else {
 						auto K_integrand = [ & ]( double s, double sc ) {
@@ -229,22 +244,72 @@ class HammersteinEquation {
 						};
 						if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
 							if ( basisSupport.x_l == basis->CollocationPoints[ i ] || basisSupport.x_u == basis->CollocationPoints[ i ] )
-								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, 1e-3 ) ;
+								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 							else
-								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ] ) +
-									integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, 1e-3 ) ;
+								K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ], tanhsinh_tol ) +
+									integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, tanhsinh_tol );
 						} else {
-							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, 1e-3 );
+							K_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 						}
 					}
 				}
+
+			if ( isGeneralized ) {
+				Kprime_ij = Eigen::MatrixXd::Zero( N, N );
+				Kprime_pv_ij = Eigen::MatrixXd::Zero( N, N );
+
+				#pragma omp parallel for
+				for ( Eigen::Index i=0; i < N; i++ )
+					for ( Eigen::Index j=0; j < N; j++ )
+					{
+
+						// Basis elements are rarely globally supported.
+						// Integrate only the non-zero region.
+						Interval basisSupport = basis->supportOfElement( j );
+
+						auto K_integrand = [ & ]( double s, double sc ) {
+							return Kprime( basis->CollocationPoints[ i ], s, sc )*basis->EvaluateBasis( j, s );
+						};
+						if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
+							Kprime_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ], tanhsinh_tol ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, tanhsinh_tol );
+						} else {
+							Kprime_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
+						}
+
+						if ( KPrimePV ) {
+							if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
+								// Really is a PV integral on this interval
+								auto K_pv_integrand = [ & ]( double s ){
+									return KPrimePV( s )*basis->EvaluateBasis( j, s );
+								};
+								Kprime_pv_ij( i, j ) = CauchyPV( K_pv_integrand, basisSupport.x_l, basisSupport.x_u, basis->CollocationPoints[ i ] );
+							} else {
+								// not really a PV integral, everything is bounded
+								boost::math::quadrature::tanh_sinh<double> integrator( tanhsinh_ref, tanhsinh_min_dist ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+								auto K_pv_bounded = [ & ]( double s ){
+									return ( KPrimePV( s )/( s-basis->CollocationPoints[ i ] ) )*basis->EvaluateBasis( j, s );
+								};
+								Kprime_pv_ij( i, j ) = integrator.integrate( K_pv_bounded, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
+							}
+
+						}
+					}
+			}
+
 			MassSolver.compute( Mass );
 
 			fVals = Eigen::VectorXd::Zero( N );
+			fPrimeVals = Eigen::VectorXd::Zero( N );
+
 			// Precompute
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i < N; i++ )
+			{
 				fVals( i ) = f( basis->CollocationPoints[ i ] );
+				if ( isGeneralized )
+					fPrimeVals( i ) = fPrime( basis->CollocationPoints[ i ] );
+			}
 		}
 
 		/* 
@@ -262,12 +327,24 @@ class HammersteinEquation {
 			new( &zData ) VecMap( NV_DATA_S( u ), N );
 			VecMap output( NV_DATA_S( F ), N );
 
-			Eigen::VectorXd Ma( N ),Ka( N ),Fa( N );
+			Eigen::VectorXd Ma( N ),Ka( N ),Fa( N ),Kp( N );
 			Ma = Mass * zData;
 			Ka = K_ij * zData;
+
+			if ( isGeneralized )
+			{
+				Kp = ( Kprime_ij + Kprime_pv_ij ) * zData;
+			}
+
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i < N; i++ )
-				Fa( i ) = g( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ) ) - Ma( i );
+			{
+				if ( isGeneralized )
+					Fa( i ) = gThree( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ), fPrimeVals( i ) + Kp( i ) ) - Ma( i );
+				else
+					Fa( i ) = g( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ) ) - Ma( i );
+			}
+
 			output = MassSolver.solve( Fa );
 			return KIN_SUCCESS;
 		}
@@ -283,11 +360,27 @@ class HammersteinEquation {
 		{
 			VecMap x( data, N );
 			Eigen::VectorXd b_vals( N );
+
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i<N; ++i )
 			{
 				double tau_i = basis->CollocationPoints[ i ];
-				b_vals( i ) = g( tau_i, yZero( tau_i ) );
+				if ( !isGeneralized )
+					b_vals( i ) = g( tau_i, yZero( tau_i ) );
+				else {
+				}
+			}
+			x = MassSolver.solve( b_vals );
+		}
+
+		void computeCoefficients( double *data, std::function<double( double )> yZero, std::function<double( double )> yPrime )
+		{
+			VecMap x( data, N );
+			Eigen::VectorXd b_vals( N );
+			for ( Eigen::Index i=0; i<N; ++i )
+			{
+				double tau_i = basis->CollocationPoints[ i ];
+				b_vals( i ) = gThree( tau_i, yZero( tau_i ), yPrime( tau_i ) );
 			}
 			x = MassSolver.solve( b_vals );
 		}
@@ -333,15 +426,15 @@ class HammersteinEquation {
 					auto K_integrand = [ & ]( double s, double sc ) {
 						return K_I( basis->CollocationPoints[ i ], s, -sc )*basis->EvaluateBasis( j, s );
 					};
-					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+					boost::math::quadrature::tanh_sinh<double> integrator( tanhsinh_ref, tanhsinh_min_dist ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
 					if ( basisSupport.x_l <= basis->CollocationPoints[ i ] && basis->CollocationPoints[ i ] < basisSupport.x_u ) {
 						if ( basisSupport.x_l == basis->CollocationPoints[ i ] || basisSupport.x_u == basis->CollocationPoints[ i ] )
-							I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u ) ;
+							I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 						else
-							I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ] ) +
-								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u ) ;
+							I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basis->CollocationPoints[ i ], tanhsinh_tol ) +
+								integrator.integrate( K_integrand, basis->CollocationPoints[ i ], basisSupport.x_u, tanhsinh_tol );
 					} else {
-						I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u );
+						I_ij( i, j ) = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 					}
 
 					// Do the Cauchy Principal Value integral
@@ -355,11 +448,11 @@ class HammersteinEquation {
 							I_pv_ij( i, j ) = CauchyPV( K_pv_integrand, basisSupport.x_l, basisSupport.x_u, basis->CollocationPoints[ i ] );
 						} else {
 							// not really a PV integral, everything is bounded
-							boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+							boost::math::quadrature::tanh_sinh<double> integrator( tanhsinh_ref, tanhsinh_min_dist ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
 							auto K_pv_bounded = [ & ]( double s ){
 								return ( K_pv( s )/( s-basis->CollocationPoints[ i ] ) )*basis->EvaluateBasis( j, s );
 							};
-							I_pv_ij( i, j ) = integrator.integrate( K_pv_bounded, basisSupport.x_l, basisSupport.x_u );
+							I_pv_ij( i, j ) = integrator.integrate( K_pv_bounded, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 						}
 					}
 					
@@ -451,7 +544,8 @@ class HammersteinEquation {
 			                            / a
 		*/
 		double EvaluateY( double x ) {
-			double y_val = f( x );
+			double y_val = 0;
+#pragma omp parallel for reduction( +: y_val )
 			for ( Eigen::Index j=0; j < N; j++ )
 			{
 				double KIntegral = 0;
@@ -462,47 +556,47 @@ class HammersteinEquation {
 						return K( x, s )*basis->EvaluateBasis( j, s );
 					};
 
-					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+					boost::math::quadrature::tanh_sinh<double> integrator( tanhsinh_ref, tanhsinh_min_dist ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
 					if ( basisSupport.x_l <= x && x < basisSupport.x_u ) {
 						double I_l,I_u;
 						// If we're sampling very close to a meshpoint we can get an error
-						if ( ( x - basisSupport.x_l ) < tanhsinh_tol )
+						if ( ( x - basisSupport.x_l ) < tanhsinh_min_dist )
 							I_l = 0;
 						else
-							I_l = integrator.integrate( K_integrand, basisSupport.x_l, x );
-						if ( ( basisSupport.x_u - x ) < tanhsinh_tol )
+							I_l = integrator.integrate( K_integrand, basisSupport.x_l, x, tanhsinh_tol );
+						if ( ( basisSupport.x_u - x ) < tanhsinh_min_dist )
 							I_u = 0;
 						else
-							I_u = integrator.integrate( K_integrand, x, basisSupport.x_u ) ;
+							I_u = integrator.integrate( K_integrand, x, basisSupport.x_u, tanhsinh_tol );
 						KIntegral = I_l + I_u;
 					} else {
-						KIntegral = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u );
+						KIntegral = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 					}
 				} else {
 					auto K_integrand = [ & ]( double s, double sc ) {
 						return K_singular( x, s, -sc )*basis->EvaluateBasis( j, s );
 					};
 
-					boost::math::quadrature::tanh_sinh<double> integrator( 4, tanhsinh_tol ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
+					boost::math::quadrature::tanh_sinh<double> integrator( tanhsinh_ref, tanhsinh_min_dist ); // sufficient for 1e-8 precision, without specially-equipped kernel functions
 					if ( basisSupport.x_l <= x && x < basisSupport.x_u ) {
 						double I_l,I_u;
 						// If we're sampling very close to a meshpoint we can get an error
-						if ( ( x - basisSupport.x_l ) < tanhsinh_tol )
+						if ( ( x - basisSupport.x_l ) < tanhsinh_min_dist )
 							I_l = 0;
 						else
-							I_l = integrator.integrate( K_integrand, basisSupport.x_l, x );
-						if ( ( basisSupport.x_u - x ) < tanhsinh_tol )
+							I_l = integrator.integrate( K_integrand, basisSupport.x_l, x, tanhsinh_tol );
+						if ( ( basisSupport.x_u - x ) < tanhsinh_min_dist )
 							I_u = 0;
 						else
-							I_u = integrator.integrate( K_integrand, x, basisSupport.x_u ) ;
+							I_u = integrator.integrate( K_integrand, x, basisSupport.x_u, tanhsinh_tol );
 						KIntegral = I_l + I_u;
 					} else {
-						KIntegral = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u );
+						KIntegral = integrator.integrate( K_integrand, basisSupport.x_l, basisSupport.x_u, tanhsinh_tol );
 					}
 				}
 				y_val += zData[ j ]*KIntegral;
 			}
-			return y_val;
+			return f( x ) + y_val;
 		};
 
 	private:

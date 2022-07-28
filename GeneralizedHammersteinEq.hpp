@@ -42,7 +42,7 @@ class GeneralizedHammersteinEquation {
 
 		};
 
-		constexpr static const double tanhsinh_tol = 1e-14;
+		constexpr static const double tanhsinh_tol = 1e-10;
 
 		~GeneralizedHammersteinEquation() {
 			if ( basis != nullptr )
@@ -170,8 +170,7 @@ class GeneralizedHammersteinEquation {
 			KPa = KPrime_ij * zData;
 			#pragma omp parallel for
 			for ( Eigen::Index i=0; i < N; i++ )
-				Fa( i ) = g( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ), fPrimeVals( i ) + KPa( i ) ) - Ma( i );
-			output = Fa;
+				output( i ) = g( basis->CollocationPoints[ i ], fVals( i ) + Ka( i ), fPrimeVals( i ) + KPa( i ) ) - Ma( i );
 			return KIN_SUCCESS;
 		}
 

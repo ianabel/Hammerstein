@@ -199,8 +199,8 @@ double f_prime_gtest( double t ) {
 int main( int argc, char** argv )
 {
 
-	unsigned int N_Intervals = 16;
-	unsigned int PolynomialOrder = 2;
+	unsigned int N_Intervals = 32;
+	unsigned int PolynomialOrder = 3;
 
 	HammersteinEquation Problem1( -1, 1, f_test1, g_test1, K_test1 );
 
@@ -600,9 +600,10 @@ int main( int argc, char** argv )
 
 	KinsolErrorWrapper( KINSetUserData( kinMem, static_cast<void*>( &GProblem ) ), "KINSetUserData" );
 
-	KinsolErrorWrapper( KINSetJacFn( kinMem, nullptr ), "Set Jacobian" );
-	GProblem.computeCoefficients( NV_DATA_S( zDataInit ), []( double t ){ return ::pow( t, 0.7 );}, []( double t ){return 0.7/::pow( t, 0.3 );} );
 
+	KinsolErrorWrapper( KINSetJacFn( kinMem, nullptr ), "Set Jacobian" );
+	GProblem.computeCoefficients( NV_DATA_S( zDataInit ), []( double t ){ return ::pow( t, 0.6 );}, []( double t ){return 0.6/::pow( t, 0.4 );} );
+	
 	KinsolErrorWrapper( KINSol( kinMem, zDataInit, KIN_LINESEARCH, one, one ), "KINSol" );
 	GProblem.setzData( zDataInit );
 	
