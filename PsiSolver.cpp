@@ -51,7 +51,7 @@ double MidplaneB( double R, double R_coil, double Z_coil )
 }
 //  GradShafranovGreensFunction( R, Rprime, 0.0, 0.0 ) * om * om * Rprime / Bz( OldPsi, Rprime );
 
-constexpr double OmegaMax = 0.4;
+constexpr double OmegaMax = 0.6;
 double PsiInner,PsiOuter;
 double omega( double psi )
 {
@@ -101,7 +101,8 @@ int main( int, char** )
 	unsigned int N_Intervals = 100;
 	unsigned int PolynomialOrder = 2;
 
-	std::function<double( double )> CoilPsi = std::bind( PsiCoils, std::placeholders::_1, 0, R_c, Z_c );
+	std::function<double( double )> CoilPsi = std::bind( PsiCoils,  std::placeholders::_1, 0, R_c, Z_c );
+	std::function<double( double )> CoilB   = std::bind( MidplaneB, std::placeholders::_1, R_c, Z_c );
 
 	double R_electrode = 0.025;
 	PsiInner = PsiCoils( R_electrode, Z_c, R_c, Z_c );
@@ -131,7 +132,8 @@ int main( int, char** )
 
 	std::cout << " Approximate Alfven Mach is initially " << OmegaMax *( R_mid/MidplaneB( R_mid, R_c, Z_c ) ) << std::endl; 
 
-	HammersteinEquation PsiProblem( 0.0, 1.0, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
+	HammersteinEquation PsiProblem( 0.0, 1.0, CoilPsi, Jtor2, GradShafranovGreensFunction1D, CoilB, DerivativeGreensFunction1D_Weak, DerivativeGreensFunction1D_Residue);
+	// HammersteinEquation PsiProblem( 0.0, 1.0, CoilPsi, Jtor, GradShafranovGreensFunction1D );
 
 	sundials::Context sunctx;
 
