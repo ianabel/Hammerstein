@@ -3,7 +3,6 @@
 #include <nvector/nvector_serial.h>    /* access to serial N_Vector       */
 #include <sunmatrix/sunmatrix_dense.h> /* access to dense SUNMatrix       */
 #include <sunlinsol/sunlinsol_dense.h> /* access to dense SUNLinearSolver */
-#include <sunlinsol/sunlinsol_lapackdense.h> /* access to dense SUNLinearSolver */
 
 #include <functional>
 #include <iostream>
@@ -61,77 +60,77 @@ double omega( double psi )
 	if ( psi > PsiOuter )
 		return 0.0;
 	double psiWidth2 = ( PsiInner - PsiOuter )*( PsiInner - PsiOuter );
-		return OmegaMax * 4.0 * ( psi - PsiInner )*( PsiOuter - psi )/psiWidth2;
+	return OmegaMax * 4.0 * ( psi - PsiInner )*( PsiOuter - psi )/psiWidth2;
+}
+
+double n_i_bar( double psi )
+{
+	return 1.0;
+}
+
+double R_c = 0.4;
+double Z_c = 1.0;
+
+double Jtor( double R, double psi )
+{
+	// n_i_bar * m_i * omega^2 * R / B_z/mu_0
+
+	return -n_i_bar( psi )*omega( psi )*omega( psi )*R/MidplaneB( R, R_c, Z_c );
+}
+
+std::function<double( double )> CurrentB;
+double Jtor2( double R, double psi, double psiPrime )
+{
+	double B = psiPrime/R;
+	return -n_i_bar( psi )*omega( psi )*omega( psi )*R/ B;
+}
+
+/*
+	The integral equation for psi is
+										/ R_max
+	psi( R ) = PsiCoils( R ) - |  dR   G( R, R' )*( n_i_bar(psi) * m_i * omega^2(psi) * R' / B_z/mu_0 ) dR
+										/ 0
+	*/
+
+int main( int, char** )
+{
+	// R=0.2 & R=0.5 in vacuum
+
+	std::cout << std::setprecision( 16 ) << std::endl;
+
+	unsigned int N_Intervals = 100;
+	unsigned int PolynomialOrder = 2;
+
+	std::function<double( double )> CoilPsi = std::bind( PsiCoils, std::placeholders::_1, 0, R_c, Z_c );
+
+	double R_electrode = 0.025;
+	PsiInner = PsiCoils( R_electrode, Z_c, R_c, Z_c );
+	double R_limiter = 0.25;
+	double Z_limiter = 0.1;
+	PsiOuter = PsiCoils( R_limiter, Z_limiter, R_c, Z_c );
+
+	double PsiMid = ( PsiInner + PsiOuter )/2.0;
+	double R_inner,R_outer,R_mid;
+
+	{
+		unsigned long m_iter =25;
+		auto [ Riv_l,Riv_u ] = boost::math::tools::toms748_solve( [&]( double R ){ return CoilPsi( R ) - PsiInner;}, 0.0,0.25, boost::math::tools::eps_tolerance<double>(), m_iter  );
+		R_inner = ( Riv_l+Riv_u )/2;
+		m_iter = 25;
+		auto [ Rov_l,Rov_u ] = boost::math::tools::toms748_solve( [&]( double R ){ return CoilPsi( R ) - PsiOuter;}, 0.2,R_c, boost::math::tools::eps_tolerance<double>(), m_iter );
+		R_outer = ( Rov_l+Rov_u )/2;
+		auto [ Rmid_l, Rmid_u ] = boost::math::tools::toms748_solve( [&]( double R ){ return CoilPsi( R ) - PsiMid;}, 0.0,R_c, boost::math::tools::eps_tolerance<double>(), m_iter );
+		R_mid = ( Rmid_l+Rmid_u )/2;
 	}
 
-	double n_i_bar( double psi )
-	{
-		return 1.0;
-	}
 
-	double R_c = 0.4;
-	double Z_c = 1.0;
+	std::cout << std::setprecision( 3 );
+	std::cout << " Plasma appears to be between R = " << R_inner << " and " << R_outer << std::endl;
+	std::cout << " Plasma centreline starts at  R = " << R_mid << std::endl;
+	std::cout << " Magnetic field at centreline is " << MidplaneB( R_mid, R_c, Z_c ) << " T" << std::endl;
 
-	double Jtor( double R, double psi )
-	{
-		// n_i_bar * m_i * omega^2 * R / B_z/mu_0
-		
-		return -n_i_bar( psi )*omega( psi )*omega( psi )*R/MidplaneB( R, R_c, Z_c );
-	}
+	std::cout << " Approximate Alfven Mach is initially " << OmegaMax *( R_mid/MidplaneB( R_mid, R_c, Z_c ) ) << std::endl; 
 
-	std::function<double( double )> CurrentB;
-	double Jtor2( double R, double psi )
-	{
-		return -n_i_bar( psi )*omega( psi )*omega( psi )*R/CurrentB( R );
-	}
-
-	/*
-		The integral equation for psi is
-											/ R_max
-		psi( R ) = PsiCoils( R ) - |  dR   G( R, R' )*( n_i_bar(psi) * m_i * omega^2(psi) * R' / B_z/mu_0 ) dR
-											/ 0
-	 */
-
-	int main( int, char** )
-	{
-		// R=0.2 & R=0.5 in vacuum
-
-		std::cout << std::setprecision( 16 ) << std::endl;
-		
-		unsigned int N_Intervals = 100;
-		unsigned int PolynomialOrder = 2;
-
-		std::function<double( double )> CoilPsi = std::bind( PsiCoils, std::placeholders::_1, 0, R_c, Z_c );
-
-		double R_electrode = 0.025;
-		PsiInner = PsiCoils( R_electrode, Z_c, R_c, Z_c );
-		double R_limiter = 0.25;
-		double Z_limiter = 0.1;
-		PsiOuter = PsiCoils( R_limiter, Z_limiter, R_c, Z_c );
-
-		double PsiMid = ( PsiInner + PsiOuter )/2.0;
-		double R_inner,R_outer,R_mid;
-		
-		{
-			unsigned long m_iter =25;
-			auto [ Riv_l,Riv_u ] = boost::math::tools::toms748_solve( [&]( double R ){ return CoilPsi( R ) - PsiInner;}, 0.0,0.25, boost::math::tools::eps_tolerance<double>(), m_iter  );
-			R_inner = ( Riv_l+Riv_u )/2;
-			m_iter = 25;
-			auto [ Rov_l,Rov_u ] = boost::math::tools::toms748_solve( [&]( double R ){ return CoilPsi( R ) - PsiOuter;}, 0.2,R_c, boost::math::tools::eps_tolerance<double>(), m_iter );
-			R_outer = ( Rov_l+Rov_u )/2;
-			auto [ Rmid_l, Rmid_u ] = boost::math::tools::toms748_solve( [&]( double R ){ return CoilPsi( R ) - PsiMid;}, 0.0,R_c, boost::math::tools::eps_tolerance<double>(), m_iter );
-			R_mid = ( Rmid_l+Rmid_u )/2;
-		}
-
-
-		std::cout << std::setprecision( 3 );
-		std::cout << " Plasma appears to be between R = " << R_inner << " and " << R_outer << std::endl;
-		std::cout << " Plasma centrline starts at   R = " << R_mid << std::endl;
-		std::cout << " Magnetic field at centreline is " << MidplaneB( R_mid, R_c, Z_c ) << " T" << std::endl;
-
-		std::cout << " Approximate Alfven Mach is initially " << OmegaMax *( R_mid/MidplaneB( R_mid, R_c, Z_c ) ) << std::endl; 
-	
-	CurrentB = std::bind( MidplaneB, std::placeholders::_1, R_c, Z_c );
 	HammersteinEquation PsiProblem( 0.0, 1.0, CoilPsi, Jtor2, GradShafranovGreensFunction1D );
 
 	sundials::Context sunctx;
@@ -166,7 +165,7 @@ double omega( double psi )
 
 	SUNMatrix Jac = SUNDenseMatrix( NDims, NDims, sunctx );
 
-	SUNLinearSolver LS = SUNLinSol_LapackDense( zDataInit, Jac, sunctx );
+	SUNLinearSolver LS = SUNLinSol_Dense( zDataInit, Jac, sunctx );
 
 	KinsolErrorWrapper( KINSetLinearSolver( kinMem, LS, Jac ), "KINSetLinearSolver" );
 
@@ -223,35 +222,9 @@ double omega( double psi )
 		double R = 0.0 + ( 1.0 - 0.0 )*( static_cast<double>( i )/static_cast<double>( N_samples ) );
 		double psi = PsiProblem.EvaluateY( R );
 
-		out << R << '\t' << CoilPsi( R ) << '\t' << psi << '\t' << MidplaneB( R, R_c, Z_c ) << '\t' << MidplaneB( R, R_c, Z_c ) + PsiProblem.Evaluate( B_data, R ) << '\t' << omega( psi ) << '\t' << std::endl;
+		out << R << '\t' << CoilPsi( R ) << '\t' << psi << '\t' << MidplaneB( R, R_c, Z_c ) << '\t' << MidplaneB( R, R_c, Z_c ) + PsiProblem.Evaluate( B_data, R ) << '\t' << PsiProblem.EvaluateZ( R ) << '\t' << std::endl;
 	}
 	out.close();
-
-
-	/*
-	std::fstream out2( "Psi2D.dat", std::ios_base::out );
-
-
-	N_samples = 256;
-	out2 << "# R\tPsi" << std::endl;
-	double R_min = 0.0,R_max = 4*R_c,Z_min = 0.0,Z_max = 0.75*Z_c;
-	for ( unsigned int i=0; i <= N_samples; i++ )
-	{
-		double R = R_min + ( R_max - R_min )*( static_cast<double>( i )/static_cast<double>( N_samples ) );
-		for ( unsigned int j=1; j <= N_samples; j++ ) {
-			double Z = Z_min + ( Z_max - Z_min )*( static_cast<double>( j )/static_cast<double>( N_samples ) );
-			boost::math::quadrature::tanh_sinh<double> Int( 5, 1e-15 );
-			auto PsiIntegrand = [ & ]( double Rs ) {
-				return GradShafranovGreensFunction( R, Z, Rs, 0 )*Jtor2( Rs, PsiProblem.EvaluateY( Rs ) );
-			};
-
-			double psi = PsiCoils( R, Z, R_c, Z_c ) + Int.integrate( PsiIntegrand, R_inner, R_outer );
-
-			out2 << R << '\t' << Z << '\t' << psi << std::endl;
-		}
-	}
-	out2.close();
-	*/
 
 
 
