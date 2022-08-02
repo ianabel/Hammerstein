@@ -111,19 +111,26 @@ double DerivativeGreensFunction1D_Weak( double R, double R_star, double x )
 
 
 /*
-double MidplaneB( double R, double R_coil, double Z_coil )
+ * Greens function including a perfectly conducting wall at R = R_wall
+ */
+double GSGF_ConductingWall( double R, double R_star, double Z, double Z_star, double R_wall )
 {
-	double k_squared = 4 * R * R_coil / ( ( R + R_coil )*( R + R_coil ) + Z_coil * Z_coil );
-	double k = ::sqrt( k_squared );
+	if ( R_star >= R_wall ) 
+		throw std::runtime_error( "Green's function for conducting cylindrical itnerior called with source outside cylinder" );
+	double R_image = R_wall * ( R_wall / R_star );
+	double image_strength = ( R_star + R_wall )/( R_image + R_wall );
 
-	double answer = 0;
-
-	answer = ( ( ( R - R_coil )*( R - R_coil ) + Z_coil*Z_coil )*booost::math::ellint_1( k ) - ( R*R - R_coil*R_coil + Z_coil*Z_coil )*EllipticE( k ) ) / ( M_PI * ( ( R - R_coil )*( R - R_coil ) + Z_coil*Z_coil ) * ( ::sqrt( ( R + R_coil )*( R + R_coil ) + Z_coil * Z_coil ) ) );
-
-	return answer;
+	return GradShafranovGreensFunction( R, R_star, Z, Z_star ) - image_strength * GradShafranovGreensFunction( R, R_image, Z, Z_star );
 }
-*/
 
-
-
+double GSGF1D_ConductingWall(double R, double R_star, double delta, double R_wall )
+{
+	if ( R_star >= R_wall ) 
+		throw std::runtime_error( "Green's function for conducting cylindrical itnerior called with source outside cylinder" );
+	double R_image = R_wall * ( R_wall / R_star );
+	double image_strength = ( R_star + R_wall )/( R_image + R_wall );
+	
+	return GradShafranovGreensFunction( R, R_star, delta ) - image_strength * GradShafranovGreensFunction( R, R_image, R-R_image );
+}
+}
 

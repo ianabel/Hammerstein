@@ -51,7 +51,7 @@ double MidplaneB( double R, double R_coil, double Z_coil )
 }
 //  GradShafranovGreensFunction( R, Rprime, 0.0, 0.0 ) * om * om * Rprime / Bz( OldPsi, Rprime );
 
-constexpr double OmegaMax = 0.6;
+constexpr double OmegaMax = 0.9;
 double PsiInner,PsiOuter;
 double omega( double psi )
 {
