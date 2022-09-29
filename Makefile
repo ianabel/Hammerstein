@@ -19,10 +19,6 @@ HammersteinSolver: HammersteinSolver.cpp HammersteinEquation.hpp CollocationAppr
 HammersteinTests: HammersteinTests.cpp HammersteinEquation.hpp CollocationApprox.hpp GaussNodes.hpp GeneralizedHammersteinEq.hpp Makefile
 	$(CXX) -o HammersteinTests $(CXXFLAGS) HammersteinTests.cpp $(LINK_FLAGS)
 
-
-PsiSolver: PsiSolver.cpp HammersteinEquation.hpp CollocationApprox.hpp GaussNodes.hpp GreensFunction.hpp GreensFunction.cpp Makefile
-	$(CXX) -o PsiSolver $(CXXFLAGS) PsiSolver.cpp GreensFunction.cpp $(LINK_FLAGS)
-
 clean:
 	rm -f HammersteinSolver PsiSolver;
 
