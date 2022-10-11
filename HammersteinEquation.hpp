@@ -329,11 +329,11 @@ class HammersteinEquation {
 		{
 			// to allow for weak nonlinearities not of the hammerstein form
 			// that call will allow external code to update things
-			if ( callback )
-				callback( this );
-
 			new( &zData ) VecMap( NV_DATA_S( u ), N );
 			VecMap output( NV_DATA_S( F ), N );
+
+			if ( callback )
+				callback( this );
 
 			Eigen::VectorXd Ma( N ),Ka( N ),Fa( N ),Kp( N );
 			Ma = Mass * zData;
