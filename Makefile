@@ -11,7 +11,7 @@ CXX=g++
 CXXFLAGS=-std=c++20 -O2 -march=native -fopenmp -DBOOST_MATH_PROMOTE_DOUBLE_POLICY=false $(SUNFLAGS) $(EIGENFLAGS)
 
 LINK_FLAGS=  -llapacke -llapack -lblas -lm $(SUN_LINK_FLAGS)
-all: PsiSolver
+all: HammersteinSolver HammersteinTests
 
 HammersteinSolver: HammersteinSolver.cpp HammersteinEquation.hpp CollocationApprox.hpp GaussNodes.hpp GeneralizedHammersteinEq.hpp Makefile
 	$(CXX) -o HammersteinSolver $(CXXFLAGS) HammersteinSolver.cpp $(LINK_FLAGS)
@@ -20,6 +20,6 @@ HammersteinTests: HammersteinTests.cpp HammersteinEquation.hpp CollocationApprox
 	$(CXX) -o HammersteinTests $(CXXFLAGS) HammersteinTests.cpp $(LINK_FLAGS)
 
 clean:
-	rm -f HammersteinSolver PsiSolver;
+	rm -f HammersteinSolver HammersteinTests;
 
 .PHONY: clean all

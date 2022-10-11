@@ -54,8 +54,8 @@
 
 class HammersteinEquation {
 	public:
-		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double )> k )
-			: a( A ), b( B ), f( F ), g( G ), K( k ),K_singular( nullptr ), basis( nullptr ), zData( nullptr, 0 )
+		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double )> k, std::function<void( HammersteinEquation const * )> callback_p = nullptr )
+			: a( A ), b( B ), f( F ), g( G ), K( k ),K_singular( nullptr ), basis( nullptr ), zData( nullptr, 0 ), callback( callback_p )
 		{
 			fPrime = nullptr; Kprime = nullptr;
 			KPrimePV = nullptr; gThree = nullptr;
@@ -63,8 +63,8 @@ class HammersteinEquation {
 		};
 
 		// If there is a version of k that can be evaluated near s=t
-		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double, double )> k )
-			: a( A ), b( B ), f( F ), g( G ), K( nullptr ),K_singular( k ), basis( nullptr ), zData( nullptr, 0 )
+		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double )> G, std::function<double( double, double, double )> k, std::function<void( HammersteinEquation const * )> callback_p = nullptr )
+			: a( A ), b( B ), f( F ), g( G ), K( nullptr ),K_singular( k ), basis( nullptr ), zData( nullptr, 0 ), callback( callback_p )
 		{
 			fPrime = nullptr; Kprime = nullptr;
 			KPrimePV = nullptr; gThree = nullptr;
@@ -73,8 +73,8 @@ class HammersteinEquation {
 
 		// If there is a version of k that can be evaluated near s=t
 		HammersteinEquation( double A, double B, std::function<double( double )> F, std::function<double( double, double, double )> G, std::function<double( double, double, double )> k,
-				std::function<double( double )> Fprime, std::function<double( double, double, double )> kPrime, std::function<double( double )> kPrimePV )
-			: a( A ), b( B ), f( F ), fPrime( Fprime ), KPrimePV( kPrimePV ), gThree( G ), K( nullptr ),K_singular( k ), Kprime( kPrime ), basis( nullptr ), zData( nullptr, 0 )
+				std::function<double( double )> Fprime, std::function<double( double, double, double )> kPrime, std::function<double( double )> kPrimePV , std::function<void( HammersteinEquation const * )> callback_p = nullptr )
+			: a( A ), b( B ), f( F ), fPrime( Fprime ), KPrimePV( kPrimePV ), gThree( G ), K( nullptr ),K_singular( k ), Kprime( kPrime ), basis( nullptr ), zData( nullptr, 0 ), callback( callback_p )
 		{
 			g = nullptr; isGeneralized = true;
 
@@ -128,9 +128,12 @@ class HammersteinEquation {
 
 		double a,b;
 		bool isGeneralized;
+
 		std::function<double( double )> f,fPrime,KPrimePV;
 		std::function<double( double, double )> g,K,gPrime;
 		std::function<double( double, double, double )> gThree,K_singular, Kprime;
+
+		std::function<void( HammersteinEquation const * )> callback;
 
 		Eigen::MatrixXd Mass;
 		Eigen::MatrixXd K_ij,Kprime_ij,Kprime_pv_ij;
@@ -324,6 +327,11 @@ class HammersteinEquation {
 
 		int ComputeResidual( N_Vector u, N_Vector F )
 		{
+			// to allow for weak nonlinearities not of the hammerstein form
+			// that call will allow external code to update things
+			if ( callback )
+				callback( this );
+
 			new( &zData ) VecMap( NV_DATA_S( u ), N );
 			VecMap output( NV_DATA_S( F ), N );
 
